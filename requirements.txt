@@ -1,0 +1,4 @@
+flet>=0.24.0
+supabase>=2.4.0
+python-dotenv>=1.0.0
+bcrypt>=4.1.0
