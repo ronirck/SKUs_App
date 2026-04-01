@@ -15,6 +15,7 @@ import flet as ft
 import auth
 import database
 import game_state as gs
+import preferences
 from components import (
     ALIGN_CENTER,
     campo_texto,
@@ -64,17 +65,64 @@ def _nav_bar(selected: int, page: ft.Page) -> ft.NavigationBar:
     )
 
 
-def _logo_prisma(height: int = 100) -> ft.Image:
-    """Retorna el widget del logo oficial de Prisma."""
+def _get_logo_sede(page: ft.Page, height: int = 100) -> ft.Image:
+    """Retorna el widget del logo oficial de la sede activa."""
+    sede = preferences.get_sede()
+    info = _SEDES_INFO.get(sede, _SEDES_INFO["Prisma"])
     return ft.Image(
-        src="Images/Logotipos_Homologados_Referencias Comerciales_Prisma.png",
+        src=info["logo"],
         height=height,
         fit="contain",
     )
 
+# Mapa sede → logo e ícono
+_SEDES_INFO: dict[str, dict[str, str]] = {
+    "Prisma":  {"logo": "Images/Prisma.png",  "ico": "Images/Prisma.ico"},
+    "FEBECA":  {"logo": "Images/Febeca.png",  "ico": "Images/Febeca.ico"},
+    "SILLACA": {"logo": "Images/Sillaca.png", "ico": "Images/Sillaca.ico"},
+    "BEVAL":   {"logo": "Images/Beval.png",   "ico": "Images/Beval.ico"},
+}
+
+def _skeleton_catalogo() -> list[ft.Control]:
+    """Placeholder visual mientras se cargan los productos del catálogo."""
+    def _tile_skel():
+        return ft.Container(
+            margin=ft.Margin(16, 0, 16, 8),
+            border_radius=12,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            border=ft.Border(
+                left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT),
+                right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT),
+                top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT),
+                bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT),
+            ),
+            content=ft.Container(
+                padding=ft.Padding(12, 14, 12, 14),
+                bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                content=ft.Row(spacing=10, controls=[
+                    ft.Container(
+                        width=36, height=36, border_radius=10,
+                        bgcolor=ft.Colors.with_opacity(0.35, ft.Colors.ON_PRIMARY_CONTAINER),
+                    ),
+                    ft.Container(
+                        expand=True, height=18, border_radius=6,
+                        bgcolor=ft.Colors.with_opacity(0.22, ft.Colors.ON_PRIMARY_CONTAINER),
+                    ),
+                    ft.Container(
+                        width=20, height=20, border_radius=10,
+                        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.ON_PRIMARY_CONTAINER),
+                    ),
+                ]),
+            ),
+        )
+
+    return [ft.Container(height=8), *[_tile_skel() for _ in range(9)], ft.Container(height=24)]
+
 
 def _montar(page: ft.Page, view: ft.View) -> None:
     """Reemplaza la vista actual. Patrón que funciona en Flet 0.82."""
+    import auth as _auth
+    _auth.registrar_actividad()   # cualquier navegación cuenta como actividad
     page.views.clear()
     page.views.append(view)
     page.update()
@@ -131,6 +179,13 @@ class GuiaEstudioView:
             expand=True,
             controls=[estado_cargando("Cargando catálogo...")],
         )
+        self._sede_actual: str = preferences.get_sede()
+        info = _SEDES_INFO.get(self._sede_actual, _SEDES_INFO["Prisma"])
+        self._logo_img = ft.Image(
+            src=info["logo"],
+            height=120,
+            fit="contain",
+        )
 
     # -- Tiles -----------------------------------------------------------------
 
@@ -167,23 +222,10 @@ class GuiaEstudioView:
                                         color=ft.Colors.PRIMARY),
                                 ft.Text(p.get("nombre", ""), size=13),
                             ]),
-                            # Imagen del producto (Aumentada para mejor visibilidad en móvil)
-                            ft.Container(
-                                width=100, height=100,
-                                border_radius=8,
-                                bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
-                                alignment=ft.Alignment(0, 0),
-                                content=ft.Image(
-                                    src=p.get("imagen_url"),
-                                    width=100, height=100,
-                                    fit="contain",
-                                    border_radius=6,
-                                    error_content=ft.Icon(ft.Icons.IMAGE_NOT_SUPPORTED_OUTLINED, 
-                                                        size=40, color=ft.Colors.OUTLINE_VARIANT),
-                                ) if p.get("imagen_url") else ft.Icon(ft.Icons.IMAGE_OUTLINED, 
-                                                                    size=40, color=ft.Colors.OUTLINE_VARIANT),
-                                margin=ft.Margin(8, 0, 8, 0),
-                            ),
+                            # TODO: imagen desactivada — cada ft.Image dispara una
+                            # descarga de red que congela la UI en Flet 0.82 con
+                            # 100+ productos por subcategoría. Re-activar cuando
+                            # se implemente carga diferida (lazy image loading).
                             ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
                                     color=ft.Colors.OUTLINE),
                         ],
@@ -309,8 +351,33 @@ class GuiaEstudioView:
             ]),
         )
 
-    def _build_arbol(self, productos: list[dict], 
-                     cat_abierta: str = None, 
+    # -- Filtro por sede -------------------------------------------------------
+
+    def _get_prods_sede(self) -> list[dict]:
+        """Retorna los productos del caché filtrados por la sede activa.
+        Prisma = todos. Comparación case-insensitive como seguridad extra."""
+        if self._sede_actual == "Prisma":
+            return _catalogo_cache
+        sede_upper = self._sede_actual.upper()
+        return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == sede_upper]
+
+    def _ir_a_sede(self, sede: str) -> None:
+        """Guarda la nueva sede y recarga la vista completa. Garantiza filtro correcto."""
+        import os
+        if sede == self._sede_actual:
+            return
+        preferences.set_sede(sede)
+        # Actualizar ícono de ventana antes de remontar
+        try:
+            info = _SEDES_INFO.get(sede, _SEDES_INFO["Prisma"])
+            if hasattr(self.page, "window"):
+                self.page.window.icon = os.path.abspath(info["ico"])
+        except Exception:
+            pass
+        GuiaEstudioView(self.page).mount()
+
+    def _build_arbol(self, productos: list[dict],
+                     cat_abierta: str = None,
                      sub_abierta: str = None) -> list[ft.Control]:
         global _catalogo_arbol_dict, _catalogo_tiles_cache
         
@@ -373,11 +440,30 @@ class GuiaEstudioView:
 
     def _fetch(self) -> None:
         global _catalogo_cache, _catalogo_cargado
+        def _mostrar_o_error(prods):
+            try:
+                self._mostrar_arbol(prods)
+            except Exception as exc:
+                self._lista_view.controls.clear()
+                self._lista_view.controls.append(estado_error(
+                    str(exc),
+                    on_reintentar=lambda: self.page.run_thread(self._fetch),
+                ))
+                self.page.update()
+                raise
+
         try:
             if _catalogo_cargado and _catalogo_cache:
-                # Usar caché - construcción del árbol es lo único que tarda
-                self._mostrar_arbol(_catalogo_cache)
+                # Cache en memoria listo — reconstruir controles frescos
+                _mostrar_o_error(self._get_prods_sede())
                 return
+
+            # Mostrar skeleton mientras se espera la carga (red o disco)
+            self._lista_view.controls.clear()
+            for c in _skeleton_catalogo():
+                self._lista_view.controls.append(c)
+            self.page.update()
+
             productos = database.fetch_productos()
             if not productos:
                 self._lista_view.controls.clear()
@@ -387,7 +473,7 @@ class GuiaEstudioView:
                 return
             _catalogo_cache   = productos
             _catalogo_cargado = True
-            self._mostrar_arbol(productos)
+            _mostrar_o_error(self._get_prods_sede())
         except Exception as exc:
             self._lista_view.controls.clear()
             self._lista_view.controls.append(estado_error(
@@ -410,8 +496,8 @@ class GuiaEstudioView:
     def _aplicar_filtros(self, e=None) -> None:
         cat_txt = (self._filtro_cat.value or "").strip().lower()
         sub_txt = (self._filtro_sub.value or "").strip().lower()
-        
-        prods = _catalogo_cache
+
+        prods = self._get_prods_sede()
         cat_cod = None
         sub_cod = None
 
@@ -448,8 +534,8 @@ class GuiaEstudioView:
 
         # Obtener todas las categorías únicas
         cats_encontradas = sorted(list(set(
-            p.get("categoria_nombre", "").strip() 
-            for p in _catalogo_cache 
+            p.get("categoria_nombre", "").strip()
+            for p in self._get_prods_sede()
             if txt in p.get("categoria_nombre", "").lower()
         )))[:5]
 
@@ -482,9 +568,9 @@ class GuiaEstudioView:
             return
 
         cat_nom = self._filtro_cat.value
-        
+
         # Obtener todas las subcategorías (filtrando por categoría si corresponde)
-        prods = _catalogo_cache
+        prods = self._get_prods_sede()
         if cat_nom != "Todas las Categorías":
             prods = [p for p in prods if p.get("categoria_nombre", "").strip() == cat_nom]
         
@@ -517,6 +603,11 @@ class GuiaEstudioView:
         self._aplicar_filtros()
 
     def mount(self) -> None:
+        global _catalogo_tiles_cache
+        # Los controles Flet no se pueden reusar entre sesiones de vista distintas.
+        # Limpiar la caché obliga a reconstruir controles frescos para este mount.
+        _catalogo_tiles_cache = []
+
         self._filtro_cat = ft.TextField(
             label="Categoría (Escribe para buscar...):",
             hint_text="Ej: Inflables",
@@ -564,6 +655,37 @@ class GuiaEstudioView:
             controls=[ft.Container(height=8)],
         )
 
+        # PopupMenuButton: cada ítem tiene on_click propio → no depende de e.data del Dropdown
+        self._sede_btn = ft.PopupMenuButton(
+            content=ft.Container(
+                padding=ft.Padding(8, 6, 4, 6),
+                border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                border_radius=8,
+                content=ft.Row(
+                    spacing=2, tight=True,
+                    controls=[
+                        ft.Text(self._sede_actual, size=13),
+                        ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
+                    ],
+                ),
+            ),
+            items=[
+                ft.PopupMenuItem(
+                    content="PRISMA",
+                    on_click=lambda _: self._ir_a_sede("Prisma"),
+                ),
+                ft.PopupMenuItem(
+                    content="FEBECA",
+                    on_click=lambda _: self._ir_a_sede("FEBECA"),
+                ),
+                ft.PopupMenuItem(
+                    content="SILLACA",
+                    on_click=lambda _: self._ir_a_sede("SILLACA"),
+                ),
+                ft.PopupMenuItem(content="BEVAL (Próx.)", disabled=True),
+            ],
+        )
+
         view = ft.View(
             route="/guia_estudio",
             padding=0,
@@ -577,15 +699,23 @@ class GuiaEstudioView:
                             padding=ft.Padding(20, 48, 20, 12),
                             content=ft.Row(
                                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                vertical_alignment=ft.CrossAxisAlignment.START,
                                 controls=[
-                                    ft.Column(spacing=2, controls=[
-                                        _logo_prisma(120),
+                                    ft.Column(spacing=2, expand=True, controls=[
+                                        self._logo_img,
                                         ft.Text("Guía de Estudio: Códigos y Mnemotécnicas",
                                                 size=13, weight=ft.FontWeight.BOLD,
                                                 color=ft.Colors.SECONDARY),
                                     ]),
-                                    ft.IconButton(icon=ft.Icons.REFRESH,
-                                                  on_click=lambda _: self._refrescar()),
+                                    ft.Column(
+                                        horizontal_alignment=ft.CrossAxisAlignment.END,
+                                        spacing=4,
+                                        controls=[
+                                            ft.IconButton(icon=ft.Icons.REFRESH,
+                                                          on_click=lambda _: self._refrescar()),
+                                            self._sede_btn,
+                                        ],
+                                    ),
                                 ],
                             ),
                         ),
@@ -701,7 +831,7 @@ class DesafiosView:
                         ft.Container(
                             padding=ft.Padding(20, 48, 20, 8),
                             content=ft.Column(spacing=2, controls=[
-                                _logo_prisma(120),
+                                _get_logo_sede(self.page, 120),
                                 ft.Text("Aprende los códigos de productos (SKU)",
                                         size=13, color=ft.Colors.SECONDARY),
                             ]),
@@ -793,12 +923,6 @@ class PerfilView:
                 d.open = False; self.page.update()
             def confirmar(e):
                 d.open = False; self.page.update()
-                
-                # Cerrar sesión de uso en DB antes de limpiar auth
-                s = auth.get_sesion()
-                if s and s.id_uso:
-                    from database import finalizar_sesion_uso
-                    database.finalizar_sesion_uso(s.id_uso)
                 
                 import local_state as ls
                 ls.limpiar()
@@ -934,8 +1058,7 @@ class LoginView:
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=20,
                     controls=[
-                        ft.Image(src="Images/Logotipos_Homologados_Referencias Comerciales_Prisma.png",
-                                 width=200, fit="contain"),
+                        _get_logo_sede(self.page, 120),
                         ft.Text("Códigos de Producto", size=22,
                                 weight=ft.FontWeight.BOLD,
                                 text_align=ft.TextAlign.CENTER),
@@ -1176,7 +1299,7 @@ class ConfigurarPartidaView:
             route="/configurar", padding=0, bgcolor=ft.Colors.SURFACE,
             controls=[
                 ft.AppBar(
-                    title=_logo_prisma(22),
+                    title=_get_logo_sede(self.page, 22),
                     bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(
                         icon=ft.Icons.ARROW_BACK,
@@ -1359,7 +1482,7 @@ class QuizView:
             route="/quiz", padding=0, bgcolor=ft.Colors.SURFACE,
             controls=[
                 ft.AppBar(
-                    title=_logo_prisma(22), 
+                    title=_get_logo_sede(self.page, 22), 
                     bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(icon=ft.Icons.CLOSE,
                                           on_click=self._confirmar_salida),
@@ -1391,7 +1514,7 @@ class ResultadoQuizView:
             route="/resultado_quiz", scroll=ft.ScrollMode.AUTO,
             padding=ft.Padding(16, 0, 16, 16), bgcolor=ft.Colors.SURFACE,
             controls=[
-                ft.AppBar(title=_logo_prisma(22),
+                ft.AppBar(title=_get_logo_sede(self.page, 22),
                           bgcolor=ft.Colors.SURFACE,
                           automatically_imply_leading=False),
                 ft.Container(
@@ -1445,10 +1568,8 @@ class ResultadoQuizView:
         )
         _montar(self.page, view)
 
-        # Sincronizar sesión con la base de datos al completar un desafío
-        sesion = auth.get_sesion()
-        if sesion and sesion.id_uso:
-            self.page.run_thread(database.finalizar_sesion_uso, sesion.id_uso)
+        # Completar un desafío cuenta como actividad
+        auth.registrar_actividad()
 
 
 # ------------------------------------------------------------------------------
@@ -1582,7 +1703,7 @@ class DesafioContrarrelojView:
             route="/contrarreloj", padding=0, bgcolor=ft.Colors.SURFACE,
             controls=[
                 ft.AppBar(
-                    title=_logo_prisma(22),
+                    title=_get_logo_sede(self.page, 22),
                     bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(icon=ft.Icons.CLOSE,
                                           on_click=self._confirmar_salida),
@@ -1605,7 +1726,7 @@ class ResultadoContrarrelojView:
             route="/resultado_contrarreloj", padding=ft.Padding(16, 0, 16, 16),
             bgcolor=ft.Colors.SURFACE,
             controls=[
-                ft.AppBar(title=_logo_prisma(22),
+                ft.AppBar(title=_get_logo_sede(self.page, 22),
                           bgcolor=ft.Colors.SURFACE,
                           automatically_imply_leading=False),
                 ft.Container(
@@ -1658,10 +1779,8 @@ class ResultadoContrarrelojView:
         )
         _montar(self.page, view)
 
-        # Sincronizar sesión con la base de datos al completar un desafío
-        sesion = auth.get_sesion()
-        if sesion and sesion.id_uso:
-            self.page.run_thread(database.finalizar_sesion_uso, sesion.id_uso)
+        # Completar un desafío cuenta como actividad
+        auth.registrar_actividad()
 
 
 # -------------¡# ------------------------------------------------------------------------------

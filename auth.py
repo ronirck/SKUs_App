@@ -13,6 +13,8 @@ from typing import Optional
 
 import atexit
 import bcrypt
+from datetime import datetime, timezone
+
 from database import fetch_usuario_por_email, insertar_usuario, actualizar_ultimo_acceso
 
 # Ruta del archivo de sesión — mismo directorio que este script
@@ -30,7 +32,12 @@ class Sesion:
 
 
 # Estado en memoria
-_sesion_activa: Optional[Sesion] = None
+_sesion_activa:    Optional[Sesion]   = None
+
+# ── Seguimiento de actividad ──────────────────────────────────────────────────
+_INACTIVIDAD_SEG  = 60          # segundos sin actividad para cerrar segmento
+_segmento_inicio: Optional[datetime] = None   # cuándo empezó el tramo activo actual
+_ultimo_actividad: Optional[datetime] = None  # última vez que se detectó interacción
 
 
 # ── Persistencia ──────────────────────────────────────────────────────────────
@@ -93,35 +100,82 @@ def restaurar_sesion() -> Optional[Sesion]:
             _sesion_activa = None
     return _sesion_activa
 
+def registrar_actividad() -> None:
+    """
+    Llamar ante cualquier interacción del usuario (toque, teclado, navegación).
+    Si no hay segmento activo, inicia uno nuevo.
+    """
+    global _segmento_inicio, _ultimo_actividad
+    ahora = datetime.now(timezone.utc)
+    _ultimo_actividad = ahora
+    if _segmento_inicio is None:
+        _segmento_inicio = ahora
+        print(f"[ACTIVIDAD] Nuevo segmento iniciado: {ahora.strftime('%H:%M:%S')}")
+
+
+def _flush_segmento() -> None:
+    """Cierra el tramo activo y acumula su duración en la BD."""
+    global _segmento_inicio, _ultimo_actividad
+    if _segmento_inicio is None or _sesion_activa is None or not _sesion_activa.id_uso:
+        return
+    fin      = _ultimo_actividad or datetime.now(timezone.utc)
+    segundos = max(0, int((fin - _segmento_inicio).total_seconds()))
+    _segmento_inicio = None
+    print(f"[ACTIVIDAD] Segmento cerrado — duración: {segundos}s, acumulando en BD...")
+    if segundos > 0:
+        from database import acumular_tiempo_sesion
+        try:
+            acumular_tiempo_sesion(_sesion_activa.id_uso, segundos)
+            print(f"[ACTIVIDAD] BD actualizada: +{segundos}s para sesión {_sesion_activa.id_uso}")
+        except Exception as exc:
+            print(f"[ACTIVIDAD] Error al acumular tiempo: {exc}")
+
+
 def registrar_inicio_uso() -> None:
-    """Inicia sesión de uso, ej. al cargar productos por primera vez."""
+    """
+    Obtiene el registro sesiones_uso de HOY o crea uno nuevo si es un día distinto.
+    Solo hace la consulta a BD la primera vez en este proceso.
+    Llamar cuando los productos se carguen por primera vez.
+    """
     global _sesion_activa
-    if _sesion_activa and not _sesion_activa.id_uso:
-        from database import iniciar_sesion_uso
-        _sesion_activa.id_uso = iniciar_sesion_uso(_sesion_activa.id)
-        # Guardar inmediatamente para que el id_uso persista si hay crash
+    if not _sesion_activa:
+        return
+    # Si ya inicializamos el id_uso este proceso Y ya hay actividad → solo marcar actividad
+    if _sesion_activa.id_uso is not None and _ultimo_actividad is not None:
+        registrar_actividad()
+        return
+    # Primera inicialización: buscar sesión de hoy o crear una nueva
+    from database import obtener_sesion_hoy, iniciar_sesion_uso
+    try:
+        sesion_hoy = obtener_sesion_hoy(_sesion_activa.id)
+        _sesion_activa.id_uso = sesion_hoy["id"] if sesion_hoy else iniciar_sesion_uso(_sesion_activa.id)
         _guardar_sesion(_sesion_activa)
+    except Exception:
+        pass
+    registrar_actividad()
+
 
 def registrar_corazon() -> None:
-    """Actualiza la hora de fin (heartbeat) para evitar pérdida de datos si hay crash."""
-    global _sesion_activa
-    if _sesion_activa and _sesion_activa.id_uso:
-        from database import finalizar_sesion_uso
-        try:
-            finalizar_sesion_uso(_sesion_activa.id_uso)
-        except Exception:
-            pass
+    """
+    Ejecutado periódicamente (cada ~10 s).
+    Si el usuario lleva más de _INACTIVIDAD_SEG sin interacción, cierra el segmento activo.
+    """
+    if _ultimo_actividad is None:
+        return
+    inactivo = (datetime.now(timezone.utc) - _ultimo_actividad).total_seconds()
+    if inactivo >= _INACTIVIDAD_SEG:
+        _flush_segmento()
+
 
 def registrar_fin_uso() -> None:
-    """Finaliza sesión de uso, ej. al desconectar/cerrar app."""
-    global _sesion_activa
-    if _sesion_activa and _sesion_activa.id_uso:
-        from database import finalizar_sesion_uso
-        try:
-            finalizar_sesion_uso(_sesion_activa.id_uso)
-        except Exception:
-            pass
-        _sesion_activa.id_uso = None
+    """Flushea el tramo activo al cerrar la app o desconectar."""
+    _flush_segmento()
+    # Marcar timestamp de cierre en el cache de productos para calcular TTL
+    try:
+        from database import marcar_cierre_cache
+        marcar_cierre_cache()
+    except Exception:
+        pass
 
 
 # Garantizar que se llama al finalizar aunque el proceso termine abruptamente
@@ -133,10 +187,18 @@ def get_sesion() -> Optional[Sesion]:
 
 
 def cerrar_sesion() -> None:
-    """Limpia la sesión en memoria y en disco."""
-    global _sesion_activa
-    _sesion_activa = None
+    """Flushea el segmento activo, limpia sesión en memoria/disco e invalida el cache."""
+    global _sesion_activa, _segmento_inicio, _ultimo_actividad
+    _flush_segmento()
+    _segmento_inicio  = None
+    _ultimo_actividad = None
+    _sesion_activa    = None
     _borrar_sesion_disco()
+    try:
+        from database import invalidar_cache_productos
+        invalidar_cache_productos()
+    except Exception:
+        pass
 
 
 # ── Login ─────────────────────────────────────────────────────────────────────
