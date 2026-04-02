@@ -5,6 +5,7 @@ Esto evita bloquear el hilo principal de Flet al arrancar.
 """
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -22,7 +23,14 @@ _cache_productos:     Optional[list] = None
 
 # ── Cache en disco ────────────────────────────────────────────────────────────
 _PRODUCTOS_CACHE_FILE = Path(__file__).parent / "cache_productos.json"
-_CACHE_TTL_MINUTOS    = 60   # Máximo tiempo (min) cerrada la app para reusar cache
+_CACHE_TTL_MINUTOS    = 14   # Máximo tiempo (min) cerrada la app para reusar cache
+
+# ── Control de invalidación y concurrencia ─────────────────────────────────────
+# _invalidation_count se incrementa cada vez que se invalida la cache.
+# fetch_productos captura el valor antes del fetch y solo guarda en disco
+# si el valor no cambió (evita reescribir después de un logout).
+_invalidation_count: int = 0
+_fetch_lock = threading.Lock()   # evita dos fetches simultáneos desde Supabase
 
 
 def get_client() -> Client:
@@ -35,8 +43,13 @@ def get_client() -> Client:
 
 # ── Cache en disco: productos ─────────────────────────────────────────────────
 
-def _guardar_cache_disco(productos: list[dict]) -> None:
-    """Persiste la lista de productos en disco. cerrado_en = None (app abierta)."""
+def _guardar_cache_disco(productos: list[dict], token_invalidacion: int) -> None:
+    """
+    Persiste la lista de productos en disco solo si la cache no fue invalidada
+    mientras se hacía el fetch (evita reescribir tras un logout).
+    """
+    if token_invalidacion != _invalidation_count:
+        return   # Cache fue invalidada mientras se fetcheaba → no guardar
     try:
         data = {
             "cerrado_en": None,
@@ -97,7 +110,13 @@ def _leer_cache_disco() -> Optional[list[dict]]:
 
 
 def invalidar_cache_productos() -> None:
-    """Elimina el cache de disco (al cerrar sesión)."""
+    """
+    Invalida la cache de productos: limpia memoria, borra disco e incrementa
+    el contador de invalidación para que cualquier fetch en curso no guarde.
+    """
+    global _cache_productos, _invalidation_count
+    _invalidation_count += 1
+    _cache_productos = None
     try:
         if _PRODUCTOS_CACHE_FILE.exists():
             _PRODUCTOS_CACHE_FILE.unlink()
@@ -238,73 +257,88 @@ def fetch_productos() -> list[dict]:
     Retorna todos los productos.
     Orden de prioridad:
       1. Cache en memoria  (_cache_productos)
-      2. Cache en disco    (cache_productos.json, si no expiró)
+      2. Cache en disco    (cache_productos.json, si no expiró el TTL)
       3. Supabase          (6500+ registros en chunks)
+
+    Thread-safe: _fetch_lock evita dos descargas simultáneas desde Supabase.
+    El token de invalidación previene guardar en disco si el usuario cerró sesión
+    mientras se realizaba el fetch.
     """
     global _cache_productos
+
+    # Revisión rápida sin lock (camino feliz)
     if _cache_productos is not None:
         return _cache_productos
 
-    # ── Intentar cache en disco ───────────────────────────────────────────────
-    cached = _leer_cache_disco()
-    if cached:
-        _cache_productos = cached
-        return cached
+    with _fetch_lock:
+        # Segunda revisión dentro del lock (otro hilo pudo haber terminado primero)
+        if _cache_productos is not None:
+            return _cache_productos
 
-    # ── Fetch desde Supabase ──────────────────────────────────────────────────
-    cats = fetch_categorias()
-    subs = fetch_subcategorias()
+        # ── Intentar cache en disco ───────────────────────────────────────────
+        cached = _leer_cache_disco()
+        if cached:
+            _cache_productos = cached
+            return cached
 
-    all_rows: list[dict] = []
-    chunk_size = 1000
-    offset = 0
+        # ── Capturar token antes de la descarga ───────────────────────────────
+        token = _invalidation_count
 
-    while True:
-        rows = (
-            get_client().table("productos")
-            .select(
-                "categoria_codigo, subcategoria_codigo, codigo, "
-                "nombre, mnemotecnia, codigo_completo, imagen_url, sede"
+        # ── Fetch desde Supabase ──────────────────────────────────────────────
+        cats = fetch_categorias()
+        subs = fetch_subcategorias()
+
+        all_rows: list[dict] = []
+        chunk_size = 1000
+        offset = 0
+
+        while True:
+            rows = (
+                get_client().table("productos")
+                .select(
+                    "categoria_codigo, subcategoria_codigo, codigo, "
+                    "nombre, mnemotecnia, codigo_completo, imagen_url, sede"
+                )
+                .range(offset, offset + chunk_size - 1)
+                .execute().data
             )
-            .range(offset, offset + chunk_size - 1)
-            .execute().data
-        )
-        if not rows:
-            break
-        all_rows.extend(rows)
-        if len(rows) < chunk_size:
-            break
-        offset += chunk_size
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(rows) < chunk_size:
+                break
+            offset += chunk_size
 
-    for p in all_rows:
-        ck = p.get("categoria_codigo", "").strip() or ""
-        sk = p.get("subcategoria_codigo", "").strip() or ""
-        pk = p.get("codigo", "").strip() or ""
+        for p in all_rows:
+            ck = p.get("categoria_codigo", "").strip() or ""
+            sk = p.get("subcategoria_codigo", "").strip() or ""
+            pk = p.get("codigo", "").strip() or ""
 
-        p["categoria_codigo"]    = ck
-        p["subcategoria_codigo"] = sk
-        p["codigo"]              = pk
+            p["categoria_codigo"]    = ck
+            p["subcategoria_codigo"] = sk
+            p["codigo"]              = pk
 
-        if p.get("codigo_completo"):
-            p["codigo_completo"] = p["codigo_completo"].strip()
-        sede_p = p["sede"] if p.get("sede") else ""
-        if sede_p:
-            p["sede"] = sede_p.strip().upper()
-        sede_p = p["sede"]
+            if p.get("codigo_completo"):
+                p["codigo_completo"] = p["codigo_completo"].strip()
+            sede_p = p["sede"] if p.get("sede") else ""
+            if sede_p:
+                p["sede"] = sede_p.strip().upper()
+            sede_p = p["sede"]
 
-        # Lookup por (sede, codigo) para respetar que el mismo código
-        # puede tener nombres distintos en cada sede.
-        cat_data = cats.get((sede_p, ck), {"nombre": ck})
-        sub_data = subs.get((sede_p, ck, sk), {"nombre": sk})
+            cat_data = cats.get((sede_p, ck), {"nombre": ck})
+            sub_data = subs.get((sede_p, ck, sk), {"nombre": sk})
 
-        p["categoria_nombre"]    = cat_data["nombre"]
-        p["subcategoria_nombre"] = sub_data["nombre"]
+            p["categoria_nombre"]    = cat_data["nombre"]
+            p["subcategoria_nombre"] = sub_data["nombre"]
 
-    # Guardar en disco para la próxima sesión
-    _guardar_cache_disco(all_rows)
+        # Guardar en disco solo si no hubo logout durante el fetch
+        _guardar_cache_disco(all_rows, token)
 
-    _cache_productos = all_rows
-    return all_rows
+        # Solo almacenar en memoria si la cache sigue vigente
+        if token == _invalidation_count:
+            _cache_productos = all_rows
+
+        return all_rows
 
 
 # ── Quiz ──────────────────────────────────────────────────────────────────────

@@ -289,15 +289,33 @@ class GuiaEstudioView:
 
     def _cat_tile(self, cat_cod: str, cat_nom: str,
                   arbol_subs: dict, abierto: bool = False,
-                  sub_a_abrir: str = None) -> ft.Container:
+                  sub_a_abrir: str = None, cat_mnemo: str = "") -> ft.Container:
         """
         LAZY: sub_col empieza vacío, a menos que abierto=True.
+        Muestra la mnemotecnia de la categoría al desplegarla.
         """
         sub_col  = ft.Column(visible=abierto, spacing=0, controls=[])
         icono    = ft.Icon(
             ft.Icons.KEYBOARD_ARROW_UP if abierto else ft.Icons.KEYBOARD_ARROW_DOWN,
             size=20, color=ft.Colors.ON_PRIMARY_CONTAINER)
         cargado  = [False]
+
+        mnemo_panel = ft.Container(
+            visible=abierto and bool(cat_mnemo),
+            padding=ft.Padding(14, 8, 14, 10),
+            bgcolor=ft.Colors.TERTIARY_CONTAINER,
+            border=ft.Border(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
+            content=ft.Row(
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
+                            color=ft.Colors.TERTIARY),
+                    ft.Text(cat_mnemo, size=12, italic=True,
+                            color=ft.Colors.ON_TERTIARY_CONTAINER, expand=True),
+                ],
+            ),
+        )
 
         def construir_subs():
             if not cargado[0]:
@@ -315,6 +333,8 @@ class GuiaEstudioView:
         def toggle(_):
             construir_subs()
             sub_col.visible = not sub_col.visible
+            if cat_mnemo:
+                mnemo_panel.visible = sub_col.visible
             icono.name = (ft.Icons.KEYBOARD_ARROW_UP if sub_col.visible
                           else ft.Icons.KEYBOARD_ARROW_DOWN)
             self.page.update()
@@ -347,6 +367,7 @@ class GuiaEstudioView:
                         icono,
                     ]),
                 ),
+                mnemo_panel,
                 sub_col,
             ]),
         )
@@ -397,24 +418,37 @@ class GuiaEstudioView:
         if es_completo and _catalogo_arbol_dict:
             arbol = _catalogo_arbol_dict
         else:
-            # Optimización: Construir el árbol una sola vez de forma eficiente
+            # Obtener mnemotecnias de categorías (ya en caché de memoria, sin red)
+            try:
+                cats_data  = database.fetch_categorias()
+                sede_upper = (self._sede_actual or "").strip().upper()
+            except Exception:
+                cats_data  = {}
+                sede_upper = ""
+
             arbol = {}
             for p in productos:
                 cc, sc = p["categoria_codigo"], p["subcategoria_codigo"]
                 if cc not in arbol:
-                    arbol[cc] = {"nombre": p.get("categoria_nombre", cc) or cc, "subs": {}}
+                    cat_info = cats_data.get((sede_upper, cc)) or {}
+                    arbol[cc] = {
+                        "nombre":      p.get("categoria_nombre", cc) or cc,
+                        "subs":        {},
+                        "mnemotecnia": cat_info.get("mnemotecnia") or "",
+                    }
                 if sc not in arbol[cc]["subs"]:
                     arbol[cc]["subs"][sc] = {
-                        "nombre": p.get("subcategoria_nombre", sc) or sc, 
+                        "nombre": p.get("subcategoria_nombre", sc) or sc,
                         "prods": []
                     }
                 arbol[cc]["subs"][sc]["prods"].append(p)
-            
+
             if es_completo:
                 _catalogo_arbol_dict = arbol
 
         tiles = [
             self._cat_tile(cc, arbol[cc]["nombre"], arbol[cc]["subs"],
+                           cat_mnemo=arbol[cc].get("mnemotecnia", ""),
                            abierto=(cc == cat_abierta),
                            sub_a_abrir=sub_abierta if cc == cat_abierta else None)
             for cc in sorted(arbol)
@@ -1060,6 +1094,9 @@ class LoginView:
                 password=self._campo_password.value or "",
             )
             if resultado.exitoso:
+                # Arrancar descarga de productos en background inmediatamente,
+                # antes de que la GuiaEstudioView la solicite.
+                self.page.run_thread(database.fetch_productos)
                 GuiaEstudioView(self.page).mount()
             else:
                 mostrar_snackbar(self.page, resultado.mensaje, error=True)

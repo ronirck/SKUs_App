@@ -1,0 +1,17 @@
+[tool.flet]
+app_name = "SKU"
+app_version = "1.0.0"
+org = "com.tuempresa.catalogoproductos"
+
+[tool.flet.build]
+exclude = [
+    "Data/*",
+    "env/*",
+    "*.xlsx",
+    "*.env",
+    ".env",
+    "CLAUDE.md",
+    "README.md",
+    "requirements.txt",
+    "upload_data.py"
+]

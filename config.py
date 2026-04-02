@@ -1,35 +1,15 @@
 """
 config.py
-Responsabilidad única: leer el archivo .env y exponer las variables
-de entorno como constantes tipadas. Ningún otro módulo debe llamar
-a os.getenv() directamente.
+Responsabilidad única: exponer las variables de configuración como
+constantes tipadas. En Android no existe .env, se usan valores directos.
 """
 
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-
-# Busca el .env en el mismo directorio que este archivo
-load_dotenv(Path(__file__).parent / ".env")
-
-
-def _require(key: str) -> str:
-    """Obtiene una variable de entorno o lanza un error claro si no existe."""
-    value = os.getenv(key, "").strip()
-    if not value:
-        raise EnvironmentError(
-            f"'{key}' no está definida en el archivo .env\n"
-            f"Asegúrate de que el archivo .env existe junto a config.py."
-        )
-    return value
-
-
 # ── Supabase ──────────────────────────────────────────────────────────────────
-SUPABASE_URL: str = _require("SUPABASE_URL")
-SUPABASE_KEY: str = _require("SUPABASE_KEY")
+SUPABASE_URL: str = "https://kmsonkzumooffvdkeuql.supabase.co"  # ← reemplaza
+SUPABASE_KEY: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imttc29ua3p1bW9vZmZ2ZGtldXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTMxODUsImV4cCI6MjA4OTc2OTE4NX0.wi1h1I4PsCc8hi0dPVyeHgDkvmmzooaNdp5dyxaWTP0"                 # ← reemplaza con anon key
 
 # ── UI / App ──────────────────────────────────────────────────────────────────
 APP_TITLE:        str = "Códigos de Producto"
-WINDOW_WIDTH:     int = 390   # Simula Pixel 7 en desarrollo escritorio
+WINDOW_WIDTH:     int = 390
 WINDOW_HEIGHT:    int = 844
 COLOR_SEED:       str = "blue"
