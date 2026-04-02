@@ -58,11 +58,23 @@ def estado_error(mensaje: str, on_reintentar: Callable) -> ft.Container:
         content=ft.Column(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=16,
             controls=[
-                ft.Icon(ft.Icons.CLOUD_OFF_OUTLINED, size=64, color=ft.Colors.ERROR),
-                ft.Text("Error de conexión", size=18, weight=ft.FontWeight.W_500,
-                        color=ft.Colors.ERROR),
-                ft.Text(mensaje, size=12, text_align=ft.TextAlign.CENTER,
-                        color=ft.Colors.ON_SURFACE_VARIANT, max_lines=6),
+                ft.Container(
+                    padding=ft.Padding(20, 16, 20, 16),
+                    border_radius=12,
+                    bgcolor=ft.Colors.RED,
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=10,
+                        controls=[
+                            ft.Icon(ft.Icons.CLOUD_OFF_OUTLINED, size=48,
+                                    color=ft.Colors.BLACK),
+                            ft.Text("Error de conexión", size=16,
+                                    weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
+                            ft.Text(mensaje, size=12, text_align=ft.TextAlign.CENTER,
+                                    color=ft.Colors.BLACK, max_lines=8),
+                        ],
+                    ),
+                ),
                 ft.Button("Reintentar", icon=ft.Icons.REFRESH,
                           on_click=lambda _: on_reintentar()),
             ],

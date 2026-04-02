@@ -145,8 +145,8 @@ def _precargar_catalogo(page) -> None:
             _catalogo_cache = database.fetch_productos()
             _catalogo_cargado = True
         
-        # Cargar datos para los Desafíos/Quiz (Caché en database.py)
-        database.fetch_todos_para_quiz()
+        # Precalentar la lista de productos (quiz la deriva en tiempo real, no necesita cache propio)
+        # fetch_todos_para_quiz ya no tiene caché global; no es necesario precargarlo aquí.
     except Exception:
         pass
 
@@ -354,20 +354,27 @@ class GuiaEstudioView:
     # -- Filtro por sede -------------------------------------------------------
 
     def _get_prods_sede(self) -> list[dict]:
-        """Retorna los productos del caché filtrados por la sede activa.
-        Prisma = todos. Comparación case-insensitive como seguridad extra."""
-        if self._sede_actual == "Prisma":
-            return _catalogo_cache
-        sede_upper = self._sede_actual.upper()
+        """Retorna los productos filtrados por la sede activa. Vacío si no hay sede."""
+        if not self._sede_actual:
+            return []
+        sede_upper = self._sede_actual.strip().upper()
         return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == sede_upper]
 
     def _ir_a_sede(self, sede: str) -> None:
-        """Guarda la nueva sede y recarga la vista completa. Garantiza filtro correcto."""
+        """Guarda la nueva sede, re-enriquece los productos y recarga la vista."""
         import os
         if sede == self._sede_actual:
             return
         preferences.set_sede(sede)
-        # Actualizar ícono de ventana antes de remontar
+        # 1. Limpiar cachés de cats/subs → re-fetch desde Supabase
+        database.invalidar_cache_catalogo()
+        # 2. Re-enriquecer productos en memoria con los nuevos nombres
+        database.re_enriquecer_productos()
+        # 3. Limpiar cachés de controles Flet para que el árbol se reconstruya
+        global _catalogo_arbol_dict, _catalogo_tiles_cache
+        _catalogo_arbol_dict  = {}
+        _catalogo_tiles_cache = []
+        # 4. Actualizar ícono de ventana
         try:
             info = _SEDES_INFO.get(sede, _SEDES_INFO["Prisma"])
             if hasattr(self.page, "window"):
@@ -440,6 +447,17 @@ class GuiaEstudioView:
 
     def _fetch(self) -> None:
         global _catalogo_cache, _catalogo_cargado
+
+        # Sin sede seleccionada → mostrar indicación, no cargar nada
+        if not self._sede_actual:
+            self._lista_view.controls.clear()
+            self._lista_view.controls.append(estado_vacio(
+                "Elige tu casa",
+                "Usa el menú desplegable para seleccionar tu sede.",
+            ))
+            self.page.update()
+            return
+
         def _mostrar_o_error(prods):
             try:
                 self._mostrar_arbol(prods)
@@ -664,16 +682,17 @@ class GuiaEstudioView:
                 content=ft.Row(
                     spacing=2, tight=True,
                     controls=[
-                        ft.Text(self._sede_actual, size=13),
+                        ft.Text(
+                            self._sede_actual if self._sede_actual else "Elegir una casa",
+                            size=13,
+                            color=ft.Colors.ON_SURFACE if self._sede_actual
+                                  else ft.Colors.ON_SURFACE_VARIANT,
+                        ),
                         ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
                     ],
                 ),
             ),
             items=[
-                ft.PopupMenuItem(
-                    content="PRISMA",
-                    on_click=lambda _: self._ir_a_sede("Prisma"),
-                ),
                 ft.PopupMenuItem(
                     content="FEBECA",
                     on_click=lambda _: self._ir_a_sede("FEBECA"),
@@ -682,7 +701,10 @@ class GuiaEstudioView:
                     content="SILLACA",
                     on_click=lambda _: self._ir_a_sede("SILLACA"),
                 ),
-                ft.PopupMenuItem(content="BEVAL (Próx.)", disabled=True),
+                ft.PopupMenuItem(
+                    content="BEVAL",
+                    on_click=lambda _: self._ir_a_sede("BEVAL"),
+                ),
             ],
         )
 
@@ -1082,7 +1104,7 @@ class LoginView:
 
 
 # ------------------------------------------------------------------------------
-# REGISTRO VIEW - TEMPORAL
+# REGISTRO VIEW
 # ------------------------------------------------------------------------------
 
 class RegistroView:
@@ -1140,9 +1162,8 @@ class RegistroView:
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
                 ft.AppBar(
-                    title=ft.Text("Crear usuario TEMPORAL",
-                                  weight=ft.FontWeight.W_500),
-                    bgcolor=ft.Colors.ERROR_CONTAINER,
+                    title=ft.Text("Crear usuario", weight=ft.FontWeight.W_500),
+                    bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(
                         icon=ft.Icons.ARROW_BACK,
                         on_click=lambda _: LoginView(self.page).mount()),
@@ -1153,15 +1174,6 @@ class RegistroView:
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=20,
                         controls=[
-                            ft.Container(
-                                padding=ft.Padding(12, 12, 12, 12),
-                                border_radius=8,
-                                bgcolor=ft.Colors.ERROR_CONTAINER,
-                                content=ft.Text(
-                                    "¡ Elimina esta pantalla una vez creado tu usuario.",
-                                    size=12, color=ft.Colors.ON_ERROR_CONTAINER,
-                                    text_align=ft.TextAlign.CENTER),
-                            ),
                             self._campo_nombre, self._campo_email,
                             self._campo_password, self._indicador,
                             ft.Row(controls=[self._btn]),
@@ -1276,7 +1288,15 @@ class ConfigurarPartidaView:
             if not sesion:
                 LoginView(self.page).mount()
                 return
-            self._data = database.fetch_todos_para_quiz()
+            sede = preferences.get_sede()
+            if not sede:
+                self._area.content = estado_vacio(
+                    "Elige tu casa",
+                    "Ve a la Guía de Estudio y selecciona tu sede antes de iniciar un desafío.",
+                )
+                self.page.update()
+                return
+            self._data = database.fetch_todos_para_quiz(sede)
             self._area.content = self._build_selector()
         except Exception as exc:
             self._area.content = estado_error(

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 _PREFS_FILE = Path(__file__).parent / "app_preferences.json"
-_DEFAULT_SEDE = "Prisma"
+_DEFAULT_SEDE = ""   # Sin sede → el usuario debe elegir al iniciar
 
 
 def get_sede() -> str:
@@ -19,6 +19,15 @@ def get_sede() -> str:
     except Exception:
         pass
     return _DEFAULT_SEDE
+
+
+def limpiar() -> None:
+    """Elimina el archivo de preferencias (al cerrar sesión)."""
+    try:
+        if _PREFS_FILE.exists():
+            _PREFS_FILE.unlink()
+    except Exception:
+        pass
 
 
 def set_sede(sede: str) -> None:

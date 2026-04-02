@@ -168,9 +168,12 @@ def registrar_corazon() -> None:
 
 
 def registrar_fin_uso() -> None:
-    """Flushea el tramo activo al cerrar la app o desconectar."""
+    """
+    Flushea el tramo activo y marca el timestamp de cierre en el cache de productos.
+    El cache se reutiliza si la app se reabre dentro de los 60 min siguientes;
+    si pasó más tiempo, _leer_cache_disco() lo descarta automáticamente.
+    """
     _flush_segmento()
-    # Marcar timestamp de cierre en el cache de productos para calcular TTL
     try:
         from database import marcar_cierre_cache
         marcar_cierre_cache()
@@ -187,7 +190,7 @@ def get_sesion() -> Optional[Sesion]:
 
 
 def cerrar_sesion() -> None:
-    """Flushea el segmento activo, limpia sesión en memoria/disco e invalida el cache."""
+    """Flushea el segmento activo y borra los 3 archivos locales (cache, sesión, preferencias)."""
     global _sesion_activa, _segmento_inicio, _ultimo_actividad
     _flush_segmento()
     _segmento_inicio  = None
@@ -197,6 +200,11 @@ def cerrar_sesion() -> None:
     try:
         from database import invalidar_cache_productos
         invalidar_cache_productos()
+    except Exception:
+        pass
+    try:
+        import preferences
+        preferences.limpiar()
     except Exception:
         pass
 
@@ -251,7 +259,7 @@ def intentar_login(email: str, password: str) -> ResultadoLogin:
     )
 
 
-# ── Registro — TEMPORAL ───────────────────────────────────────────────────────
+# ── Registro ──────────────────────────────────────────────────────────────────
 
 @dataclass
 class ResultadoRegistro:
@@ -260,7 +268,6 @@ class ResultadoRegistro:
 
 
 def registrar_usuario(nombre: str, email: str, password: str) -> ResultadoRegistro:
-    """TEMPORAL: eliminar junto con RegistroView en views.py."""
     if not nombre.strip():
         return ResultadoRegistro(exitoso=False, mensaje="Ingresa tu nombre.")
     if not email.strip():

@@ -45,7 +45,20 @@ def configurar_pagina(page: ft.Page) -> None:
 def main(page: ft.Page) -> None:
     configurar_pagina(page)
 
-    # Fallback genérico para web o cierres forzados
+    # Detectar cierre de ventana y limpiar antes de que el proceso termine.
+    # window.close() es async → el handler debe ser async.
+    # prevent_close NO se usa: causaría loop infinito con window.close().
+    async def on_window_event(e):
+        es_cierre = (
+            getattr(e, "type", None) == ft.WindowEventType.CLOSE
+            or getattr(e, "data", None) == "close"
+        )
+        if es_cierre:
+            auth.registrar_fin_uso()
+
+    page.window.on_event = on_window_event
+
+    # Fallback para Ctrl+C o kill del proceso
     def on_disconnect(e):
         auth.registrar_fin_uso()
 
