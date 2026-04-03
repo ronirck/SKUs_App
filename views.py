@@ -16,6 +16,7 @@ import auth
 import database
 import game_state as gs
 import preferences
+from updater import AppUpdater
 from components import (
     ALIGN_CENTER,
     campo_texto,
@@ -1030,6 +1031,11 @@ class PerfilView:
                                             color=ft.Colors.ON_PRIMARY_CONTAINER),
                                     ft.Text(email, size=13,
                                             color=ft.Colors.ON_PRIMARY_CONTAINER),
+                                    ft.Text(
+                                        f"Versión {AppUpdater.APP_VERSION}",
+                                        size=11,
+                                        color=ft.Colors.SECONDARY,
+                                    ),
                                 ],
                             ),
                         ),

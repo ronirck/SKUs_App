@@ -103,7 +103,17 @@ def _leer_cache_disco() -> Optional[list[dict]]:
             cerrado = datetime.fromisoformat(cerrado_str.replace("Z", "+00:00"))
             minutos = (datetime.now(timezone.utc) - cerrado).total_seconds() / 60
             if minutos > _CACHE_TTL_MINUTOS:
-                return None   # Expirado
+                return None   # Expirado por TTL
+
+        # Verificar si la versión de datos del servidor cambió mientras la app estuvo cerrada.
+        # Si fetch_config() falla (sin internet) se usa la caché normalmente sin crashear.
+        try:
+            from updater import AppUpdater
+            if AppUpdater.check_data_version():
+                return None   # Datos desactualizados — forzar re-fetch desde Supabase
+        except Exception:
+            pass
+
         return productos
     except Exception:
         return None
