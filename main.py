@@ -20,27 +20,28 @@ _SEDE_ICONOS = {
 def configurar_pagina(page: ft.Page) -> None:
     import os
     sede = preferences.get_sede()
-    ico_rel = _SEDE_ICONOS.get(sede, "Images/Prisma.ico")
-    abs_icon_path = os.path.abspath(ico_rel)
 
     page.title = APP_TITLE
-    page.favicon = ico_rel
-    page.window_icon = abs_icon_path
-
-    # Intentar forzar el icono en el objeto window si existe
-    if hasattr(page, "window"):
-        page.window.icon = abs_icon_path
-
     page.theme_mode = ft.ThemeMode.LIGHT
     seed = SEDE_COLORES.get(sede, COLOR_SEED)
     page.theme = ft.Theme(color_scheme_seed=seed)
-    if page.platform in (
+
+    es_escritorio = page.platform in (
         ft.PagePlatform.WINDOWS,
         ft.PagePlatform.MACOS,
         ft.PagePlatform.LINUX,
-    ):
-        page.width = WINDOW_WIDTH
+    )
+    if es_escritorio:
+        page.width  = WINDOW_WIDTH
         page.height = WINDOW_HEIGHT
+        try:
+            ico_rel       = _SEDE_ICONOS.get(sede, "Images/Prisma.ico")
+            abs_icon_path = os.path.abspath(ico_rel)
+            page.favicon  = ico_rel
+            if hasattr(page, "window"):
+                page.window.icon = abs_icon_path
+        except Exception:
+            pass
 
 
 def main(page: ft.Page) -> None:
@@ -49,17 +50,26 @@ def main(page: ft.Page) -> None:
     # Detectar cierre de ventana y limpiar antes de que el proceso termine.
     # window.close() es async → el handler debe ser async.
     # prevent_close NO se usa: causaría loop infinito con window.close().
-    async def on_window_event(e):
-        es_cierre = (
-            getattr(e, "type", None) == ft.WindowEventType.CLOSE
-            or getattr(e, "data", None) == "close"
-        )
-        if es_cierre:
-            auth.registrar_fin_uso()
+    # Cierre de ventana — solo aplica en escritorio
+    if page.platform in (
+        ft.PagePlatform.WINDOWS,
+        ft.PagePlatform.MACOS,
+        ft.PagePlatform.LINUX,
+    ):
+        async def on_window_event(e):
+            es_cierre = (
+                getattr(e, "type", None) == ft.WindowEventType.CLOSE
+                or getattr(e, "data", None) == "close"
+            )
+            if es_cierre:
+                auth.registrar_fin_uso()
 
-    page.window.on_event = on_window_event
+        try:
+            page.window.on_event = on_window_event
+        except Exception:
+            pass
 
-    # Fallback para Ctrl+C o kill del proceso
+    # Fallback para Ctrl+C, kill del proceso o desconexión en Android
     def on_disconnect(e):
         auth.registrar_fin_uso()
 
