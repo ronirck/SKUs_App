@@ -154,6 +154,8 @@ _catalogo_cargado: bool = False
 # Caché de estructura agrupada y controles construidos
 _catalogo_arbol_dict: dict = {}
 _catalogo_tiles_cache: list[ft.Control] = []
+# Modo vista especial "Infaltables Febeca"
+_modo_infaltables_febeca: bool = False
 
 
 def _precargar_catalogo(page) -> None:
@@ -421,13 +423,37 @@ class GuiaEstudioView:
         if not self._sede_actual:
             return []
         sede_upper = self._sede_actual.strip().upper()
+        if _modo_infaltables_febeca:
+            return [
+                p for p in _catalogo_cache
+                if (p.get("sede") or "").upper() == "FEBECA"
+                and p.get("imagen_url") not in (None, "", "null")
+            ]
         return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == sede_upper]
+
+    def _ir_a_infaltables_febeca(self) -> None:
+        """Activa la vista filtrada de productos FEBECA con imagen_url no nulo."""
+        global _modo_infaltables_febeca, _catalogo_arbol_dict, _catalogo_tiles_cache
+        from config import SEDE_COLORES
+        _modo_infaltables_febeca = True
+        # Guardar FEBECA como sede activa para que los lookups de cat/sub funcionen
+        # y el nav bar permita acceder a Desafíos.
+        preferences.set_sede("FEBECA")
+        database.invalidar_cache_catalogo()
+        database.re_enriquecer_productos()
+        _catalogo_arbol_dict  = {}
+        _catalogo_tiles_cache = []
+        self.page.theme = ft.Theme(color_scheme_seed=SEDE_COLORES.get("FEBECA", "blue"))
+        GuiaEstudioView(self.page).mount()
 
     def _ir_a_sede(self, sede: str) -> None:
         """Guarda la nueva sede, re-enriquece los productos y recarga la vista."""
         import os
         from config import SEDE_COLORES
-        if sede == self._sede_actual:
+        global _modo_infaltables_febeca
+        venia_de_infaltables = _modo_infaltables_febeca
+        _modo_infaltables_febeca = False  # salir del modo especial al elegir sede real
+        if sede == self._sede_actual and not venia_de_infaltables:
             return
         preferences.set_sede(sede)
         # 1. Limpiar cachés de cats/subs → re-fetch desde Supabase
@@ -761,6 +787,13 @@ class GuiaEstudioView:
         )
 
         # PopupMenuButton: cada ítem tiene on_click propio → no depende de e.data del Dropdown
+        if _modo_infaltables_febeca:
+            _label_sede = "Infaltables Febeca"
+        elif self._sede_actual:
+            _label_sede = self._sede_actual
+        else:
+            _label_sede = None
+
         self._sede_btn = ft.PopupMenuButton(
             content=ft.Container(
                 padding=ft.Padding(8, 6, 4, 6),
@@ -770,9 +803,9 @@ class GuiaEstudioView:
                     spacing=2, tight=True,
                     controls=[
                         ft.Text(
-                            self._sede_actual if self._sede_actual else "Elegir una casa",
+                            _label_sede if _label_sede else "Elegir una casa",
                             size=13,
-                            color=ft.Colors.ON_SURFACE if self._sede_actual
+                            color=ft.Colors.ON_SURFACE if _label_sede
                                   else ft.Colors.ON_SURFACE_VARIANT,
                         ),
                         ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
@@ -791,6 +824,16 @@ class GuiaEstudioView:
                 ft.PopupMenuItem(
                     content="BEVAL",
                     on_click=lambda _: self._ir_a_sede("BEVAL"),
+                ),
+                ft.PopupMenuItem(),  # separador
+                ft.PopupMenuItem(
+                    content=ft.Row(spacing=8, controls=[
+                        ft.Icon(ft.Icons.STAR_OUTLINED, size=16,
+                                color=ft.Colors.AMBER_700),
+                        ft.Text("Infaltables Febeca", size=13,
+                                color=ft.Colors.AMBER_700),
+                    ]),
+                    on_click=lambda _: self._ir_a_infaltables_febeca(),
                 ),
             ],
         )
