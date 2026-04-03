@@ -6,6 +6,7 @@ Verifica la tabla `app_config` en Supabase al arrancar y actúa según el result
   - force_update      → diálogo modal con barra de progreso de descarga
   - nueva versión     → banner ignorable con botón "Actualizar"
   - data_version      → invalida caché de productos si los datos cambiaron
+  - pending_changelog → muestra novedades de la versión recién instalada (una sola vez)
 
 Uso desde main.py:
     import updater
@@ -17,16 +18,21 @@ import os
 import platform
 import subprocess
 import threading
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
 import flet as ft
+import requests
 
 import database
 
 # ── Versión actual del binario (actualizar antes de cada build) ───────────────
 APP_VERSION = "1.1.0"
+
+# ── Timeouts de descarga ──────────────────────────────────────────────────────
+_CONNECT_TIMEOUT = 15          # segundos para establecer conexión
+_READ_TIMEOUT    = 600         # segundos para recibir datos (~10 min para 260 MB)
+_CHUNK_SIZE      = 1024 * 256  # 256 KB por chunk
 
 # ── Archivo de estado local ───────────────────────────────────────────────────
 _UPDATE_STATE_FILE = Path(__file__).parent / "update_state.json"
@@ -37,7 +43,7 @@ _UPDATE_STATE_FILE = Path(__file__).parent / "update_state.json"
 # ══════════════════════════════════════════════════════════════════════════════
 
 def leer_estado_local() -> dict:
-    """Lee el archivo update_state.json. Retorna dict vacío si no existe o está corrupto."""
+    """Lee update_state.json. Retorna dict vacío si no existe o está corrupto."""
     try:
         if _UPDATE_STATE_FILE.exists():
             return json.loads(_UPDATE_STATE_FILE.read_text(encoding="utf-8"))
@@ -72,30 +78,33 @@ def comparar_versiones(v1: str, v2: str) -> int:
         except Exception:
             return (0,)
     t1, t2 = parsear(v1), parsear(v2)
-    if t1 < t2:
-        return -1
-    if t1 > t2:
-        return 1
+    if t1 < t2: return -1
+    if t1 > t2: return 1
     return 0
 
 
 def _url_descarga(config: dict, page: ft.Page) -> Optional[str]:
-    """Retorna la URL de descarga adecuada según la plataforma."""
+    """Retorna la URL de descarga leída de app_config según la plataforma."""
     try:
-        plataforma = page.platform
-        if plataforma in (ft.PagePlatform.ANDROID,):
+        if page.platform in (ft.PagePlatform.ANDROID,):
             return config.get("apk_url")
     except Exception:
         pass
-    # Fallback por plataforma del SO
     if platform.system().lower() == "windows":
         return config.get("win_url")
     return config.get("apk_url")
 
 
 def _es_verdadero(valor) -> bool:
-    """Normaliza valores booleanos que vienen de Supabase como string o bool."""
+    """Normaliza booleanos que pueden venir de Supabase como string o bool."""
     return valor in (True, "true", "True", "1", 1)
+
+
+def _fmt_mb(bytes_: Optional[int]) -> str:
+    """Convierte bytes a string legible en MB, o '' si es None."""
+    if bytes_ and bytes_ > 0:
+        return f"{bytes_ / 1_048_576:.0f} MB"
+    return ""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -121,6 +130,9 @@ class AppUpdater:
     def _run(self) -> None:
         """Se ejecuta en hilo secundario. Consulta app_config y decide qué hacer."""
         try:
+            # 0. Mostrar changelog de la versión recién instalada (una sola vez)
+            self._mostrar_changelog_pendiente()
+
             config = database.fetch_app_config()
             if not config:
                 return
@@ -137,7 +149,56 @@ class AppUpdater:
             self._verificar_binario(config)
 
         except Exception:
-            pass  # Sin internet u otro error: la app sigue funcionando normalmente
+            pass  # Sin internet u otro error: la app sigue normalmente
+
+    # ── Changelog post-instalación ────────────────────────────────────────────
+
+    def _mostrar_changelog_pendiente(self) -> None:
+        """
+        Si update_state.json tiene un pending_changelog lo muestra una sola vez
+        y luego lo borra del archivo.
+        """
+        estado = leer_estado_local()
+        entrada = estado.get("pending_changelog")
+        if not entrada:
+            return
+
+        version  = entrada.get("version", "")
+        cambios  = entrada.get("cambios", "")
+        if not cambios:
+            return
+
+        def cerrar(_):
+            dlg.open = False
+            self.page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row(spacing=8, controls=[
+                ft.Icon(ft.Icons.NEW_RELEASES_OUTLINED,
+                        color=ft.Colors.PRIMARY, size=22),
+                ft.Text(f"Novedades de la v{version}",
+                        weight=ft.FontWeight.BOLD, size=15),
+            ]),
+            content=ft.Column(
+                tight=True, spacing=0,
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.Text(cambios, size=13, color=ft.Colors.ON_SURFACE),
+                ],
+            ),
+            actions=[ft.TextButton("Entendido", on_click=cerrar)],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
+        self.page.update()
+
+        # Borrar para que no vuelva a aparecer
+        del estado["pending_changelog"]
+        guardar_estado_local(estado)
+
+    # ── Verificación de datos ─────────────────────────────────────────────────
 
     def _verificar_datos(self, config: dict) -> None:
         """
@@ -149,30 +210,30 @@ class AppUpdater:
             return
 
         estado = leer_estado_local()
-        data_version_local = estado.get("data_version")
-
-        if data_version_local != str(data_version_remota):
+        if estado.get("data_version") != str(data_version_remota):
             database.invalidar_cache_productos()
             estado["data_version"] = str(data_version_remota)
             guardar_estado_local(estado)
+
+    # ── Verificación de binario ───────────────────────────────────────────────
 
     def _verificar_binario(self, config: dict) -> None:
         """
         Compara APP_VERSION con latest_app_version y min_app_version.
         Muestra diálogo forzado, banner ignorable o nada según corresponda.
         """
-        latest  = config.get("latest_app_version")
-        min_ver = config.get("min_app_version")
-        mensaje = config.get("update_message") or "Hay una nueva versión disponible."
-        forzar  = _es_verdadero(config.get("force_update"))
+        latest   = config.get("latest_app_version")
+        min_ver  = config.get("min_app_version")
+        mensaje  = config.get("update_message") or "Hay una nueva versión disponible."
+        forzar   = _es_verdadero(config.get("force_update"))
+        changelog = config.get("changelog") or ""
 
         if not latest:
-            return  # Sin info de versión → nada que hacer
+            return
 
         if comparar_versiones(APP_VERSION, latest) >= 0:
             return  # Ya tenemos la versión más reciente
 
-        # Versión desactualizada: ¿forzar o sugerir?
         debe_forzar = forzar or (
             min_ver and comparar_versiones(APP_VERSION, min_ver) < 0
         )
@@ -180,9 +241,9 @@ class AppUpdater:
         url = _url_descarga(config, self.page)
 
         if debe_forzar:
-            self._mostrar_dialogo_forzado(latest, mensaje, url)
+            self._mostrar_dialogo_forzado(latest, mensaje, url, changelog)
         else:
-            self._mostrar_banner(latest, mensaje, url)
+            self._mostrar_banner(latest, mensaje, url, changelog)
 
     # ── Pantalla de mantenimiento ─────────────────────────────────────────────
 
@@ -225,21 +286,28 @@ class AppUpdater:
     # ── Diálogo de actualización forzada ──────────────────────────────────────
 
     def _mostrar_dialogo_forzado(self, version: str, mensaje: str,
-                                  url: Optional[str]) -> None:
+                                  url: Optional[str], changelog: str) -> None:
         """
-        Diálogo modal bloqueante. El usuario no puede cerrarlo.
-        Muestra barra de progreso durante la descarga.
+        Diálogo modal bloqueante con barra de progreso durante la descarga.
+        Resuelve el tamaño del archivo con un HEAD request antes de mostrar el botón.
         """
+        # Intentar obtener tamaño del archivo para mostrarlo al usuario
+        tam_str = ""
+        if url:
+            try:
+                r = requests.head(url, timeout=(_CONNECT_TIMEOUT, 10), allow_redirects=True)
+                tam = int(r.headers.get("content-length", 0))
+                tam_str = _fmt_mb(tam)
+            except Exception:
+                pass
+
         barra   = ft.ProgressBar(value=0, width=260,
-                                  color=ft.Colors.BLUE,
-                                  bgcolor=ft.Colors.BLUE_50)
+                                  color=ft.Colors.PRIMARY,
+                                  bgcolor=ft.Colors.SURFACE_CONTAINER)
         txt_est = ft.Text("", size=12, color=ft.Colors.SECONDARY,
                           text_align=ft.TextAlign.CENTER)
-        btn_act = ft.Button(
-            f"Actualizar a v{version}",
-            icon=ft.Icons.DOWNLOAD,
-            expand=True,
-        )
+        label_btn = f"Actualizar ahora  ({tam_str})" if tam_str else "Actualizar ahora"
+        btn_act = ft.FilledButton(label_btn, icon=ft.Icons.DOWNLOAD, expand=True)
 
         cuerpo = ft.Column(tight=True, spacing=12, controls=[
             ft.Text(mensaje, size=13, color=ft.Colors.ON_SURFACE,
@@ -249,8 +317,8 @@ class AppUpdater:
         dialogo = ft.AlertDialog(
             modal=True,
             title=ft.Row(spacing=8, controls=[
-                ft.Icon(ft.Icons.SYSTEM_UPDATE, color=ft.Colors.BLUE, size=22),
-                ft.Text(f"Actualización requerida  v{version}",
+                ft.Icon(ft.Icons.SYSTEM_UPDATE, color=ft.Colors.PRIMARY, size=22),
+                ft.Text(f"SKUs app  v{version}",
                         weight=ft.FontWeight.BOLD, size=15),
             ]),
             content=cuerpo,
@@ -277,7 +345,7 @@ class AppUpdater:
 
             threading.Thread(
                 target=self._descargar,
-                args=(url, barra, txt_est, dialogo),
+                args=(url, version, changelog, barra, txt_est, dialogo),
                 daemon=True,
             ).start()
 
@@ -290,29 +358,30 @@ class AppUpdater:
     # ── Banner ignorable ──────────────────────────────────────────────────────
 
     def _mostrar_banner(self, version: str, mensaje: str,
-                         url: Optional[str]) -> None:
-        """Banner no bloqueante en la parte superior con botones 'Actualizar' e 'Ignorar'."""
+                         url: Optional[str], changelog: str) -> None:
+        """Banner no bloqueante con botones 'Actualizar ahora' e 'Ignorar'."""
 
         def al_actualizar(_):
             banner.open = False
             self.page.update()
             if url:
-                self._mostrar_dialogo_forzado(version, mensaje, url)
+                self._mostrar_dialogo_forzado(version, mensaje, url, changelog)
 
         def al_ignorar(_):
             banner.open = False
             self.page.update()
 
         banner = ft.Banner(
-            bgcolor=ft.Colors.BLUE_50,
-            leading=ft.Icon(ft.Icons.UPDATE, color=ft.Colors.BLUE, size=28),
+            bgcolor=ft.Colors.PRIMARY_CONTAINER,
+            leading=ft.Icon(ft.Icons.UPDATE,
+                            color=ft.Colors.PRIMARY, size=28),
             content=ft.Text(
-                f"v{version} disponible. {mensaje}",
+                f"SKUs app v{version} disponible. {mensaje}",
                 size=13, color=ft.Colors.ON_SURFACE,
             ),
             actions=[
-                ft.TextButton("Actualizar", on_click=al_actualizar),
-                ft.TextButton("Ignorar",    on_click=al_ignorar),
+                ft.TextButton("Actualizar ahora", on_click=al_actualizar),
+                ft.TextButton("Ignorar",          on_click=al_ignorar),
             ],
         )
 
@@ -322,33 +391,87 @@ class AppUpdater:
 
     # ── Descarga del binario ──────────────────────────────────────────────────
 
-    def _descargar(self, url: str, barra: ft.ProgressBar,
-                    txt_est: ft.Text, dialogo: ft.AlertDialog) -> None:
+    def _descargar(self, url: str, version: str, changelog: str,
+                    barra: ft.ProgressBar, txt_est: ft.Text,
+                    dialogo: ft.AlertDialog) -> None:
         """
-        Descarga el archivo con reporte de progreso (0.0 → 1.0).
-        Al terminar, invoca el instalador del sistema.
+        Descarga el APK usando requests con stream=True y chunks de 256 KB.
+        - Timeout: 15 s conexión / 600 s lectura.
+        - Si la descarga falla a mitad, elimina el archivo parcial.
+        - Al completar, guarda el changelog en update_state.json y abre el instalador.
         """
+        nombre  = url.split("/")[-1].split("?")[0] or "update_app.apk"
+        destino = Path(__file__).parent / nombre
+
         try:
-            nombre  = url.split("/")[-1].split("?")[0] or "update_app"
-            destino = Path(__file__).parent / nombre
+            with requests.get(
+                url,
+                stream=True,
+                timeout=(_CONNECT_TIMEOUT, _READ_TIMEOUT),
+                allow_redirects=True,
+            ) as resp:
+                resp.raise_for_status()
 
-            def progreso(bloques_recibidos, tam_bloque, tam_total):
-                if tam_total > 0:
-                    avance = min(bloques_recibidos * tam_bloque / tam_total, 1.0)
-                    barra.value    = avance
-                    txt_est.value  = f"{int(avance * 100)} %"
-                    self.page.update()
+                tam_total = int(resp.headers.get("content-length", 0))
+                recibido  = 0
 
-            urllib.request.urlretrieve(url, destino, reporthook=progreso)
+                with open(destino, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=_CHUNK_SIZE):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        recibido += len(chunk)
 
+                        if tam_total > 0:
+                            avance        = min(recibido / tam_total, 1.0)
+                            barra.value   = avance
+                            txt_est.value = (
+                                f"{_fmt_mb(recibido)} / {_fmt_mb(tam_total)}"
+                                f"  ({int(avance * 100)} %)"
+                            )
+                        else:
+                            barra.value   = None  # indeterminado
+                            txt_est.value = f"{_fmt_mb(recibido)} descargados..."
+
+                        self.page.update()
+
+            # Descarga completa
             barra.value   = 1.0
             txt_est.value = "Descarga completa. Abriendo instalador..."
             self.page.update()
 
+            # Guardar changelog para mostrarlo tras reiniciar con la nueva versión
+            if changelog:
+                estado = leer_estado_local()
+                estado["pending_changelog"] = {
+                    "version": version,
+                    "cambios": changelog,
+                }
+                guardar_estado_local(estado)
+
             self._abrir_instalador(destino)
 
+        except requests.exceptions.Timeout:
+            _limpiar_parcial(destino)
+            txt_est.value = "Error: tiempo de espera agotado. Comprueba tu conexión."
+            barra.value   = 0
+            self.page.update()
+
+        except requests.exceptions.ConnectionError:
+            _limpiar_parcial(destino)
+            txt_est.value = "Error: no se pudo conectar. Verifica tu internet."
+            barra.value   = 0
+            self.page.update()
+
+        except requests.exceptions.HTTPError as exc:
+            _limpiar_parcial(destino)
+            txt_est.value = f"Error del servidor: {exc.response.status_code}."
+            barra.value   = 0
+            self.page.update()
+
         except Exception as exc:
-            txt_est.value = f"Error al descargar: {exc}"
+            _limpiar_parcial(destino)
+            txt_est.value = f"Error inesperado: {exc}"
             barra.value   = 0
             self.page.update()
 
@@ -360,7 +483,6 @@ class AppUpdater:
             if sistema == "windows":
                 os.startfile(str(ruta))
             else:
-                # Android: intent para instalar APK
                 subprocess.Popen([
                     "am", "start",
                     "-a", "android.intent.action.VIEW",
@@ -369,3 +491,14 @@ class AppUpdater:
                 ])
         except Exception:
             pass
+
+
+# ── Helpers de archivo ────────────────────────────────────────────────────────
+
+def _limpiar_parcial(ruta: Path) -> None:
+    """Elimina el archivo si existe (descarga incompleta)."""
+    try:
+        if ruta.exists():
+            ruta.unlink()
+    except Exception:
+        pass
