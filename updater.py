@@ -26,7 +26,7 @@ import flet as ft
 import database
 
 # ── Versión actual del binario (actualizar antes de cada build) ───────────────
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # ── Archivo de estado local ───────────────────────────────────────────────────
 _UPDATE_STATE_FILE = Path(__file__).parent / "update_state.json"

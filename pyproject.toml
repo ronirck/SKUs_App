@@ -1,6 +1,6 @@
 [tool.flet]
 app_name = "SKUs app"
-app_version = "1.0.0"
+app_version = "1.1.0"
 org = "com.tuempresa.catalogoproductos"
 
 [tool.flet.build]
