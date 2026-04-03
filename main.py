@@ -5,7 +5,7 @@ InicioView (camino de niveles) comentada para versión futura.
 """
 
 import flet as ft
-from config import APP_TITLE, COLOR_SEED, WINDOW_HEIGHT, WINDOW_WIDTH
+from config import APP_TITLE, COLOR_SEED, SEDE_COLORES, WINDOW_HEIGHT, WINDOW_WIDTH
 import auth
 import preferences
 
@@ -32,7 +32,8 @@ def configurar_pagina(page: ft.Page) -> None:
         page.window.icon = abs_icon_path
 
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.theme = ft.Theme(color_scheme_seed=COLOR_SEED)
+    seed = SEDE_COLORES.get(sede, COLOR_SEED)
+    page.theme = ft.Theme(color_scheme_seed=seed)
     if page.platform in (
         ft.PagePlatform.WINDOWS,
         ft.PagePlatform.MACOS,
@@ -79,11 +80,17 @@ def main(page: ft.Page) -> None:
     page.run_thread(corazon)
 
     from views import GuiaEstudioView, LoginView
+    import updater
+
     sesion = auth.restaurar_sesion()
     if sesion:
         GuiaEstudioView(page).mount()
     else:
         LoginView(page).mount()
+
+    # Verificar actualizaciones en background después de mostrar la primera vista.
+    # No bloquea el arranque; si no hay internet, simplemente no hace nada.
+    updater.AppUpdater(page).verificar()
 
 
 ft.run(main, assets_dir=".")

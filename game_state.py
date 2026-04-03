@@ -288,15 +288,15 @@ class EstadoContrarreloj:
         correcta = (opcion == pregunta.respuesta_correcta)
         if correcta:
             self.aciertos += 1
+            self.respuestas.append(RespuestaQuiz(
+                enunciado=pregunta.enunciado,
+                respuesta_correcta=pregunta.respuesta_correcta,
+                respuesta_dada=opcion,
+                correcta=True,
+            ))
+            self.indice_actual += 1
         else:
             self.errores += 1
-        self.respuestas.append(RespuestaQuiz(
-            enunciado=pregunta.enunciado,
-            respuesta_correcta=pregunta.respuesta_correcta,
-            respuesta_dada=opcion,
-            correcta=correcta
-        ))
-        self.indice_actual += 1
         return correcta
 
 
@@ -320,7 +320,7 @@ def crear_partida_contrarreloj(datos: dict, num_opciones: int = 4) -> EstadoCont
                 enunciado=cat["nombre"],
                 respuesta_correcta=cat["codigo"],
                 opciones=opciones,
-                mnemotecnia=f"Categoría {cat['codigo']}"
+                mnemotecnia=cat.get("mnemotecnia") or f"Categoría {cat['codigo']}: {cat['nombre']}",
             ))
     
     return EstadoContrarreloj(preguntas=pool)

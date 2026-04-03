@@ -36,6 +36,26 @@ def _nav_bar(selected: int, page: ft.Page) -> ft.NavigationBar:
     InicioView (camino de niveles) comentada - implementar en versión futura."""
     def on_change(e):
         idx = int(e.control.selected_index)
+        if idx != 0 and not preferences.get_sede():
+            def cerrar_modal(_):
+                dlg.open = False
+                e.control.selected_index = 0
+                page.update()
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Elige una casa primero"),
+                content=ft.Text(
+                    "Debes seleccionar tu casa en la Guía de Estudio "
+                    "antes de acceder a los desafíos.",
+                ),
+                actions=[ft.TextButton("Entendido", on_click=cerrar_modal)],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            e.control.selected_index = 0
+            page.update()
+            return
         if idx == 0: GuiaEstudioView(page).mount()
         elif idx == 1: DesafiosView(page).mount()
         elif idx == 2: PerfilView(page).mount()
@@ -236,9 +256,11 @@ class GuiaEstudioView:
         )
 
     def _sub_tile(self, sub_cod: str, sub_nom: str,
-                  productos: list[dict], abierto: bool = False) -> ft.Container:
+                  productos: list[dict], abierto: bool = False,
+                  sub_mnemo: str = "") -> ft.Container:
         """
         LAZY: prod_col empieza vacío, a menos que abierto=True.
+        Muestra la mnemotecnia de la subcategoría al desplegarla.
         """
         prod_col  = ft.Column(visible=abierto, spacing=0, controls=[])
         icono     = ft.Icon(
@@ -246,9 +268,25 @@ class GuiaEstudioView:
             size=16, color=ft.Colors.OUTLINE)
         cargado   = [False]
 
+        mnemo_panel = ft.Container(
+            visible=abierto and bool(sub_mnemo),
+            padding=ft.Padding(20, 8, 14, 10),
+            bgcolor=ft.Colors.SECONDARY_CONTAINER,
+            border=ft.Border(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
+            content=ft.Row(
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=13,
+                            color=ft.Colors.SECONDARY),
+                    ft.Text(sub_mnemo, size=12, italic=True,
+                            color=ft.Colors.ON_SECONDARY_CONTAINER, expand=True),
+                ],
+            ),
+        )
+
         def construir_productos():
             if not cargado[0]:
-                # Ordenar por código (001, 002, ...)
                 ps = sorted(productos, key=lambda x: x.get("codigo", ""))
                 prod_col.controls = [self._producto_tile(p) for p in ps]
                 cargado[0] = True
@@ -259,6 +297,8 @@ class GuiaEstudioView:
         def toggle(_):
             construir_productos()
             prod_col.visible = not prod_col.visible
+            if sub_mnemo:
+                mnemo_panel.visible = prod_col.visible
             icono.name = (ft.Icons.KEYBOARD_ARROW_UP if prod_col.visible
                           else ft.Icons.KEYBOARD_ARROW_DOWN)
             self.page.update()
@@ -283,6 +323,7 @@ class GuiaEstudioView:
                         ],
                     ),
                 ),
+                mnemo_panel,
                 prod_col,
             ]),
         )
@@ -322,7 +363,8 @@ class GuiaEstudioView:
                 sub_col.controls = [
                     self._sub_tile(sc, arbol_subs[sc]["nombre"],
                                    arbol_subs[sc]["prods"],
-                                   abierto=(sc == sub_a_abrir))
+                                   abierto=(sc == sub_a_abrir),
+                                   sub_mnemo=arbol_subs[sc].get("mnemotecnia", ""))
                     for sc in sorted(arbol_subs)
                 ]
                 cargado[0] = True
@@ -384,6 +426,7 @@ class GuiaEstudioView:
     def _ir_a_sede(self, sede: str) -> None:
         """Guarda la nueva sede, re-enriquece los productos y recarga la vista."""
         import os
+        from config import SEDE_COLORES
         if sede == self._sede_actual:
             return
         preferences.set_sede(sede)
@@ -402,6 +445,9 @@ class GuiaEstudioView:
                 self.page.window.icon = os.path.abspath(info["ico"])
         except Exception:
             pass
+        # 5. Aplicar paleta de color de la sede
+        color = SEDE_COLORES.get(sede, "blue")
+        self.page.theme = ft.Theme(color_scheme_seed=color)
         GuiaEstudioView(self.page).mount()
 
     def _build_arbol(self, productos: list[dict],
@@ -426,6 +472,11 @@ class GuiaEstudioView:
                 cats_data  = {}
                 sede_upper = ""
 
+            try:
+                subs_data = database.fetch_subcategorias()
+            except Exception:
+                subs_data = {}
+
             arbol = {}
             for p in productos:
                 cc, sc = p["categoria_codigo"], p["subcategoria_codigo"]
@@ -437,9 +488,11 @@ class GuiaEstudioView:
                         "mnemotecnia": cat_info.get("mnemotecnia") or "",
                     }
                 if sc not in arbol[cc]["subs"]:
+                    sub_info = subs_data.get((sede_upper, cc, sc)) or {}
                     arbol[cc]["subs"][sc] = {
-                        "nombre": p.get("subcategoria_nombre", sc) or sc,
-                        "prods": []
+                        "nombre":      p.get("subcategoria_nombre", sc) or sc,
+                        "prods":       [],
+                        "mnemotecnia": sub_info.get("mnemotecnia") or "",
                     }
                 arbol[cc]["subs"][sc]["prods"].append(p)
 
@@ -662,7 +715,7 @@ class GuiaEstudioView:
 
         self._filtro_cat = ft.TextField(
             label="Categoría (Escribe para buscar...):",
-            hint_text="Ej: Inflables",
+            hint_text="Ej: Electricidad",
             expand=True,
             text_size=13,
         )
@@ -1667,41 +1720,68 @@ class DesafioContrarrelojView:
                 ResultadoContrarrelojView(self.page, self.partida).mount()
             return
 
+        # Pista de mnemotecnia (oculta hasta el primer error)
+        pista = ft.Container(
+            visible=False,
+            padding=ft.Padding(12, 10, 12, 10),
+            border_radius=12,
+            bgcolor=ft.Colors.AMBER_50,
+            border=ft.Border.all(1, ft.Colors.AMBER_300),
+            content=ft.Row(
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINE,
+                            color=ft.Colors.AMBER_700, size=18),
+                    ft.Text(
+                        pregunta.mnemotecnia,
+                        size=13, color=ft.Colors.AMBER_900,
+                        expand=True,
+                    ),
+                ],
+            ),
+        )
+
+        # Mapa opcion → botón para poder colorearlo al fallar
+        botones: dict[str, ft.OutlinedButton] = {}
+        for op in pregunta.opciones:
+            botones[op] = ft.OutlinedButton(
+                op, expand=True,
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
+            )
+
         def on_opcion(opcion: str) -> None:
-            if self._bloqueado: return
+            if self._bloqueado:
+                return
             self._bloqueado = True
             correcta = self.partida.responder(opcion)
-            
-            # Feedback instantáneo y siguiente pregunta rápido
+
             if correcta:
                 self.page.snack_bar = ft.SnackBar(
                     ft.Text("+1 Punto", weight=ft.FontWeight.BOLD),
                     bgcolor=ft.Colors.GREEN, duration=600)
+                self.page.snack_bar.open = True
+                self.page.update()
+                self._mostrar_pregunta()
             else:
-                self.page.snack_bar = ft.SnackBar(
-                    ft.Text("¡Error!", weight=ft.FontWeight.BOLD),
-                    bgcolor=ft.Colors.RED, duration=600)
-            
-            self.page.snack_bar.open = True
-            self.page.update()
-            
-            self._mostrar_pregunta()
-
-        botones = []
-        for op in pregunta.opciones:
-            botones.append(
-                ft.OutlinedButton(
-                    op, expand=True,
-                    on_click=lambda e, o=op: on_opcion(o),
-                    style=ft.ButtonStyle(
-                        shape=ft.RoundedRectangleBorder(radius=12)),
+                # Marcar botón erróneo en rojo
+                botones[opcion].style = ft.ButtonStyle(
+                    color=ft.Colors.WHITE,
+                    bgcolor=ft.Colors.RED_400,
+                    shape=ft.RoundedRectangleBorder(radius=12),
                 )
-            )
+                # Mostrar pista y desbloquear para reintentar
+                pista.visible = True
+                self._bloqueado = False
+                self.page.update()
 
-        # Layout de botones: 2 por fila
+        for op, btn in botones.items():
+            btn.on_click = lambda e, o=op: on_opcion(o)
+
         filas = []
-        for i in range(0, len(botones), 2):
-            filas.append(ft.Row(spacing=8, controls=botones[i:i+2]))
+        ops = list(botones.values())
+        for i in range(0, len(ops), 2):
+            filas.append(ft.Row(spacing=8, controls=ops[i:i+2]))
 
         self._area.content = ft.Column(
             expand=True, spacing=16, scroll=ft.ScrollMode.AUTO,
@@ -1735,6 +1815,7 @@ class DesafioContrarrelojView:
                                     text_align=ft.TextAlign.CENTER),
                 ),
                 *filas,
+                pista,
             ],
         )
         self.page.update()

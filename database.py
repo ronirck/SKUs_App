@@ -25,6 +25,24 @@ _cache_productos:     Optional[list] = None
 _PRODUCTOS_CACHE_FILE = Path(__file__).parent / "cache_productos.json"
 _CACHE_TTL_MINUTOS    = 14   # Máximo tiempo (min) cerrada la app para reusar cache
 
+# Archivo de estado del updater (escrito por updater.py)
+_UPDATE_STATE_FILE = Path(__file__).parent / "update_state.json"
+
+
+def _leer_data_version_remota() -> Optional[str]:
+    """
+    Lee la última data_version conocida guardada por updater.py.
+    Retorna None si el archivo no existe o no tiene ese campo.
+    """
+    try:
+        if _UPDATE_STATE_FILE.exists():
+            data = json.loads(_UPDATE_STATE_FILE.read_text(encoding="utf-8"))
+            v = data.get("data_version")
+            return str(v) if v is not None else None
+    except Exception:
+        pass
+    return None
+
 # ── Control de invalidación y concurrencia ─────────────────────────────────────
 # _invalidation_count se incrementa cada vez que se invalida la cache.
 # fetch_productos captura el valor antes del fetch y solo guarda en disco
@@ -47,13 +65,15 @@ def _guardar_cache_disco(productos: list[dict], token_invalidacion: int) -> None
     """
     Persiste la lista de productos en disco solo si la cache no fue invalidada
     mientras se hacía el fetch (evita reescribir tras un logout).
+    Guarda también la data_version vigente para detectar cambios al releer.
     """
     if token_invalidacion != _invalidation_count:
         return   # Cache fue invalidada mientras se fetcheaba → no guardar
     try:
         data = {
-            "cerrado_en": None,
-            "productos":  productos,
+            "cerrado_en":   None,
+            "data_version": _leer_data_version_remota(),  # versión vigente al guardar
+            "productos":    productos,
         }
         _PRODUCTOS_CACHE_FILE.write_text(
             json.dumps(data, ensure_ascii=False, default=str),
@@ -81,10 +101,13 @@ def marcar_cierre_cache() -> None:
 def _leer_cache_disco() -> Optional[list[dict]]:
     """
     Lee el cache de disco si sigue siendo válido.
-    - Sin cerrado_en  → la app se cerró abruptamente; se reutiliza igual.
-    - Con cerrado_en  → válido solo si lleva menos de _CACHE_TTL_MINUTOS cerrada.
-    - Si los productos no tienen el campo 'sede' → cache desactualizado, se descarta.
-    Retorna None si expiró, no existe, está corrupto o es de esquema viejo.
+    Condiciones de invalidación:
+    - No existe o está corrupto.
+    - Los productos no tienen el campo 'sede' (esquema viejo).
+    - TTL expirado (>= _CACHE_TTL_MINUTOS desde que se cerró la app).
+    - data_version del cache difiere de la guardada por updater.py
+      (los datos en Supabase cambiaron mientras la app estaba cerrada).
+    Retorna None en cualquiera de esos casos.
     """
     try:
         if not _PRODUCTOS_CACHE_FILE.exists():
@@ -93,17 +116,28 @@ def _leer_cache_disco() -> Optional[list[dict]]:
         productos = data.get("productos")
         if not productos:
             return None
-        # Validar que el cache incluya el campo 'sede' (agregado en versión reciente).
-        # Si no lo tiene, es un cache de esquema anterior → forzar re-fetch.
+
+        # Validar esquema: el campo 'sede' debe existir
         if "sede" not in productos[0]:
             _PRODUCTOS_CACHE_FILE.unlink(missing_ok=True)
             return None
+
+        # Verificar TTL
         cerrado_str = data.get("cerrado_en")
         if cerrado_str:
             cerrado = datetime.fromisoformat(cerrado_str.replace("Z", "+00:00"))
             minutos = (datetime.now(timezone.utc) - cerrado).total_seconds() / 60
             if minutos > _CACHE_TTL_MINUTOS:
-                return None   # Expirado
+                return None   # Expirado por tiempo
+
+        # Verificar data_version: si el updater ya conoce una versión más nueva,
+        # el cache en disco está desactualizado aunque el TTL no haya expirado.
+        version_remota = _leer_data_version_remota()
+        version_cache  = data.get("data_version")
+        if version_remota and version_cache and version_remota != str(version_cache):
+            _PRODUCTOS_CACHE_FILE.unlink(missing_ok=True)
+            return None   # Datos desactualizados
+
         return productos
     except Exception:
         return None
@@ -224,6 +258,25 @@ def fetch_subcategorias() -> dict:
         for r in rows
     }
     return _cache_subcategorias
+
+
+def fetch_app_config() -> dict:
+    """
+    Obtiene la configuración global de la app desde la tabla `app_config`.
+    Se espera que la tabla tenga columnas `clave` y `valor`.
+    Retorna un dict {clave: valor}. En caso de error retorna dict vacío.
+    """
+    try:
+        rows = (
+            get_client()
+            .table("app_config")
+            .select("clave, valor")
+            .execute()
+            .data
+        )
+        return {r["clave"]: r["valor"] for r in rows}
+    except Exception:
+        return {}
 
 
 def invalidar_cache_catalogo() -> None:
