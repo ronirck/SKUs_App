@@ -136,6 +136,12 @@ _catalogo_cargado: bool = False
 _catalogo_arbol_dict: dict = {}
 _catalogo_tiles_cache: list[ft.Control] = []
 
+# -- Modo especial de visualización --------------------------------------------
+# Cadena centinela para el modo "Infaltables FEBECA".
+# Cuando está activo, se filtran solo los productos de FEBECA con imagen_url.
+_MODO_INFALTABLES = "INFALTABLES_FEBECA"
+_modo_actual_guia: str = ""   # vacío = modo normal (usa la sede de preferences)
+
 
 def _precargar_catalogo(page) -> None:
     """Lanzar en background al iniciar la app para que el catálogo y desafíos están listos."""
@@ -180,8 +186,11 @@ class GuiaEstudioView:
             expand=True,
             controls=[estado_cargando("Cargando catálogo...")],
         )
-        self._sede_actual: str = preferences.get_sede()
-        info = _SEDES_INFO.get(self._sede_actual, _SEDES_INFO["Prisma"])
+        # _modo_actual_guia tiene precedencia; si está vacío, usar la sede guardada
+        self._sede_actual: str = _modo_actual_guia if _modo_actual_guia else preferences.get_sede()
+        # En modo infaltables se muestra el logo de FEBECA (sus productos)
+        sede_logo = "FEBECA" if self._sede_actual == _MODO_INFALTABLES else self._sede_actual
+        info = _SEDES_INFO.get(sede_logo, _SEDES_INFO["Prisma"])
         self._logo_img = ft.Image(
             src=info["logo"],
             height=120,
@@ -191,7 +200,13 @@ class GuiaEstudioView:
     # -- Tiles -----------------------------------------------------------------
 
     def _producto_tile(self, p: dict) -> ft.Container:
-        detalle = ft.Column(visible=False, spacing=0, controls=[
+        imagen_url  = p.get("imagen_url")
+        # En modo Infaltables la imagen va siempre visible en la fila del producto.
+        # En otros modos va colapsada dentro del detalle (evita congestión de red
+        # con cientos de imágenes simultáneas).
+        imagen_inline = bool(imagen_url and self._sede_actual == _MODO_INFALTABLES)
+
+        detalle_controles = [
             ft.Container(
                 padding=ft.Padding(16, 8, 16, 12),
                 bgcolor=ft.Colors.SURFACE,
@@ -201,37 +216,109 @@ class GuiaEstudioView:
                     ft.Text(p.get("mnemotecnia") or "", size=12, italic=True,
                             color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                 ]),
+            ),
+        ]
+
+        # Imagen colapsable solo cuando NO está en modo inline
+        if imagen_url and not imagen_inline:
+            detalle_controles.append(
+                ft.Container(
+                    padding=ft.Padding(16, 0, 16, 16),
+                    bgcolor=ft.Colors.SURFACE,
+                    content=ft.Image(
+                        src=imagen_url,
+                        height=180,
+                        fit="contain",
+                        border_radius=8,
+                    ),
+                )
             )
-        ])
+
+        detalle = ft.Column(visible=False, spacing=0, controls=detalle_controles)
 
         def toggle(_):
             detalle.visible = not detalle.visible
             self.page.update()
 
+        if imagen_inline:
+            # ── Lightbox: se abre al tocar el thumbnail ───────────────────────
+            def abrir_imagen(_):
+                def cerrar(_):
+                    self.page.overlay.remove(lightbox)
+                    self.page.update()
+
+                lightbox = ft.Container(
+                    expand=True,
+                    bgcolor="#E6000000",   # negro 90 % opaco
+                    on_click=cerrar,
+                    padding=ft.Padding(20, 60, 20, 40),
+                    alignment=ALIGN_CENTER,
+                    content=ft.Image(
+                        src=imagen_url,
+                        fit="contain",
+                        expand=True,
+                    ),
+                )
+                self.page.overlay.append(lightbox)
+                self.page.update()
+
+            # Zona izquierda (texto) y zona derecha (thumbnail) con handlers
+            # independientes para evitar que ambas acciones se disparen a la vez.
+            fila_header = ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=0,
+                controls=[
+                    ft.Container(
+                        expand=True,
+                        padding=ft.Padding(16, 10, 8, 10),
+                        on_click=toggle, ink=True,
+                        content=ft.Column(spacing=2, controls=[
+                            ft.Text(p.get("codigo_completo", ""), size=13,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.PRIMARY),
+                            ft.Text(p.get("nombre", ""), size=13),
+                        ]),
+                    ),
+                    ft.Container(
+                        width=88, height=72,
+                        margin=ft.Margin(0, 8, 12, 8),
+                        border_radius=8,
+                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                        on_click=abrir_imagen, ink=True,
+                        content=ft.Image(
+                            src=imagen_url,
+                            width=88,
+                            height=72,
+                            fit="contain",
+                        ),
+                    ),
+                ],
+            )
+        else:
+            fila_header = ft.Container(
+                padding=ft.Padding(16, 10, 12, 10),
+                on_click=toggle, ink=True,
+                content=ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Column(spacing=2, expand=True, controls=[
+                            ft.Text(p.get("codigo_completo", ""), size=13,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.PRIMARY),
+                            ft.Text(p.get("nombre", ""), size=13),
+                        ]),
+                        ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
+                                color=ft.Colors.OUTLINE),
+                    ],
+                ),
+            )
+
         return ft.Container(
             border=ft.Border(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
             content=ft.Column(spacing=0, controls=[
-                ft.Container(
-                    padding=ft.Padding(16, 12, 16, 12),
-                    on_click=toggle, ink=True,
-                    content=ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Column(spacing=2, expand=True, controls=[
-                                ft.Text(p.get("codigo_completo", ""), size=13,
-                                        weight=ft.FontWeight.BOLD,
-                                        color=ft.Colors.PRIMARY),
-                                ft.Text(p.get("nombre", ""), size=13),
-                            ]),
-                            # TODO: imagen desactivada — cada ft.Image dispara una
-                            # descarga de red que congela la UI en Flet 0.82 con
-                            # 100+ productos por subcategoría. Re-activar cuando
-                            # se implemente carga diferida (lazy image loading).
-                            ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
-                                    color=ft.Colors.OUTLINE),
-                        ],
-                    ),
-                ),
+                fila_header,
                 detalle,
             ]),
         )
@@ -376,15 +463,34 @@ class GuiaEstudioView:
     # -- Filtro por sede -------------------------------------------------------
 
     def _get_prods_sede(self) -> list[dict]:
-        """Retorna los productos filtrados por la sede activa. Vacío si no hay sede."""
+        """Retorna los productos filtrados según el modo activo."""
+        if self._sede_actual == _MODO_INFALTABLES:
+            # Solo productos FEBECA que tienen imagen cargada
+            return [
+                p for p in _catalogo_cache
+                if (p.get("sede") or "").upper() == "FEBECA"
+                and p.get("imagen_url")
+            ]
         if not self._sede_actual:
             return []
         sede_upper = self._sede_actual.strip().upper()
         return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == sede_upper]
 
+    def _ir_a_infaltables_febeca(self) -> None:
+        """Activa el modo Infaltables FEBECA: muestra solo productos con imagen."""
+        global _modo_actual_guia, _catalogo_arbol_dict, _catalogo_tiles_cache
+        if self._sede_actual == _MODO_INFALTABLES:
+            return
+        _modo_actual_guia    = _MODO_INFALTABLES
+        _catalogo_arbol_dict  = {}
+        _catalogo_tiles_cache = []
+        GuiaEstudioView(self.page).mount()
+
     def _ir_a_sede(self, sede: str) -> None:
         """Guarda la nueva sede, re-enriquece los productos y recarga la vista."""
         import os
+        global _modo_actual_guia
+        _modo_actual_guia = ""   # salir de cualquier modo especial al elegir sede
         if sede == self._sede_actual:
             return
         preferences.set_sede(sede)
@@ -421,8 +527,12 @@ class GuiaEstudioView:
         else:
             # Obtener mnemotecnias de categorías (ya en caché de memoria, sin red)
             try:
-                cats_data  = database.fetch_categorias()
-                sede_upper = (self._sede_actual or "").strip().upper()
+                cats_data = database.fetch_categorias()
+                # En modo infaltables los productos son de FEBECA → usar su clave
+                sede_upper = (
+                    "FEBECA" if self._sede_actual == _MODO_INFALTABLES
+                    else (self._sede_actual or "").strip().upper()
+                )
             except Exception:
                 cats_data  = {}
                 sede_upper = ""
@@ -708,6 +818,14 @@ class GuiaEstudioView:
             controls=[ft.Container(height=8)],
         )
 
+        # Etiqueta del botón: muestra el nombre del modo/sede activo
+        if self._sede_actual == _MODO_INFALTABLES:
+            _label_sede = "Infaltables FEBECA"
+        elif self._sede_actual:
+            _label_sede = self._sede_actual
+        else:
+            _label_sede = None   # None → se mostrará "Elegir una casa"
+
         # PopupMenuButton: cada ítem tiene on_click propio → no depende de e.data del Dropdown
         self._sede_btn = ft.PopupMenuButton(
             content=ft.Container(
@@ -718,9 +836,9 @@ class GuiaEstudioView:
                     spacing=2, tight=True,
                     controls=[
                         ft.Text(
-                            self._sede_actual if self._sede_actual else "Elegir una casa",
+                            _label_sede if _label_sede else "Elegir una casa",
                             size=13,
-                            color=ft.Colors.ON_SURFACE if self._sede_actual
+                            color=ft.Colors.ON_SURFACE if _label_sede
                                   else ft.Colors.ON_SURFACE_VARIANT,
                         ),
                         ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
@@ -728,6 +846,10 @@ class GuiaEstudioView:
                 ),
             ),
             items=[
+                ft.PopupMenuItem(
+                    content="Prisma",
+                    on_click=lambda _: self._ir_a_sede("Prisma"),
+                ),
                 ft.PopupMenuItem(
                     content="FEBECA",
                     on_click=lambda _: self._ir_a_sede("FEBECA"),
@@ -739,6 +861,14 @@ class GuiaEstudioView:
                 ft.PopupMenuItem(
                     content="BEVAL",
                     on_click=lambda _: self._ir_a_sede("BEVAL"),
+                ),
+                ft.PopupMenuItem(),   # separador visual
+                ft.PopupMenuItem(
+                    content=ft.Row(spacing=8, controls=[
+                        ft.Icon(ft.Icons.STAR_OUTLINED, size=16, color=ft.Colors.TERTIARY),
+                        ft.Text("Infaltables FEBECA", size=13, color=ft.Colors.TERTIARY),
+                    ]),
+                    on_click=lambda _: self._ir_a_infaltables_febeca(),
                 ),
             ],
         )
@@ -875,6 +1005,42 @@ class DesafiosView:
             ]),
         )
 
+    def _sede_btn(self) -> ft.PopupMenuButton:
+        """Selector de sede compacto para la cabecera de DesafiosView."""
+        sede = preferences.get_sede()
+        label = sede if sede else "Elegir una casa"
+
+        def cambiar(nueva_sede: str):
+            preferences.set_sede(nueva_sede)
+            database.invalidar_cache_catalogo()
+            database.re_enriquecer_productos()
+            DesafiosView(self.page).mount()
+
+        return ft.PopupMenuButton(
+            content=ft.Container(
+                padding=ft.Padding(8, 6, 4, 6),
+                border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                border_radius=8,
+                content=ft.Row(
+                    spacing=2, tight=True,
+                    controls=[
+                        ft.Text(
+                            label,
+                            size=13,
+                            color=ft.Colors.ON_SURFACE if sede else ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
+                    ],
+                ),
+            ),
+            items=[
+                ft.PopupMenuItem(content="Prisma",  on_click=lambda _: cambiar("Prisma")),
+                ft.PopupMenuItem(content="FEBECA",  on_click=lambda _: cambiar("FEBECA")),
+                ft.PopupMenuItem(content="SILLACA", on_click=lambda _: cambiar("SILLACA")),
+                ft.PopupMenuItem(content="BEVAL",   on_click=lambda _: cambiar("BEVAL")),
+            ],
+        )
+
     def mount(self) -> None:
         view = ft.View(
             route="/desafios",
@@ -887,10 +1053,12 @@ class DesafiosView:
                     controls=[
                         ft.Container(
                             padding=ft.Padding(20, 48, 20, 8),
-                            content=ft.Column(spacing=2, controls=[
+                            content=ft.Column(spacing=4, controls=[
                                 _get_logo_sede(self.page, 120),
                                 ft.Text("Aprende los códigos de productos (SKU)",
                                         size=13, color=ft.Colors.SECONDARY),
+                                ft.Container(height=4),
+                                self._sede_btn(),
                             ]),
                         ),
                         ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
@@ -1331,14 +1499,7 @@ class ConfigurarPartidaView:
             if not sesion:
                 LoginView(self.page).mount()
                 return
-            sede = preferences.get_sede()
-            if not sede:
-                self._area.content = estado_vacio(
-                    "Elige tu casa",
-                    "Ve a la Guía de Estudio y selecciona tu sede antes de iniciar un desafío.",
-                )
-                self.page.update()
-                return
+            sede = preferences.get_sede() or "Prisma"
             self._data = database.fetch_todos_para_quiz(sede)
             self._area.content = self._build_selector()
         except Exception as exc:
@@ -1362,7 +1523,7 @@ class ConfigurarPartidaView:
             route="/configurar", padding=0, bgcolor=ft.Colors.SURFACE,
             controls=[
                 ft.AppBar(
-                    title=_get_logo_sede(self.page, 22),
+                    title=_get_logo_sede(self.page, 36),
                     bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(
                         icon=ft.Icons.ARROW_BACK,
@@ -1413,17 +1574,50 @@ class QuizView:
         botones_map: dict[str, ft.OutlinedButton] = {}
         feedback = ft.Container(visible=False, border_radius=10)
 
+        opciones_incorrectas: set[str] = set()
+
         def on_opcion(opcion: str) -> None:
             if self._bloqueado:
                 return
+
+            correcta = opcion == pregunta.respuesta_correcta
+
+            if self.modo == "categorias" and not correcta:
+                # Modo reintento: registrar error, marcar rojo, mostrar pista,
+                # NO avanzar — el usuario puede seguir eligiendo.
+                self.partida.registrar_error(opcion)
+                opciones_incorrectas.add(opcion)
+                botones_map[opcion].style = ft.ButtonStyle(
+                    bgcolor=ft.Colors.RED, color=ft.Colors.WHITE)
+                feedback.visible = True
+                feedback.bgcolor = ft.Colors.ORANGE_100
+                feedback.padding = ft.Padding(12, 12, 12, 12)
+                feedback.content = ft.Column(spacing=6, controls=[
+                    ft.Row(spacing=8, controls=[
+                        ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED, size=20),
+                        ft.Text("Incorrecto — inténtalo de nuevo",
+                                color=ft.Colors.RED_900,
+                                size=14, weight=ft.FontWeight.W_500),
+                    ]),
+                    ft.Row(spacing=6, controls=[
+                        ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
+                                color=ft.Colors.ORANGE),
+                        ft.Text(pregunta.mnemotecnia, size=12, italic=True,
+                                color=ft.Colors.ORANGE_900, expand=True),
+                    ]),
+                ])
+                self.page.update()
+                return  # No bloquear — dejar que el usuario reintente
+
+            # ── Respuesta definitiva (correcta, o cualquier modo no-categorias) ──
             self._bloqueado = True
-            correcta = self.partida.responder(opcion)
+            self.partida.responder(opcion)
             for op, btn in botones_map.items():
                 btn.disabled = True
                 if op == pregunta.respuesta_correcta:
                     btn.style = ft.ButtonStyle(
                         bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE)
-                elif op == opcion and not correcta:
+                elif op in opciones_incorrectas or (op == opcion and not correcta):
                     btn.style = ft.ButtonStyle(
                         bgcolor=ft.Colors.RED, color=ft.Colors.WHITE)
             feedback.visible = True
@@ -1545,7 +1739,7 @@ class QuizView:
             route="/quiz", padding=0, bgcolor=ft.Colors.SURFACE,
             controls=[
                 ft.AppBar(
-                    title=_get_logo_sede(self.page, 22), 
+                    title=_get_logo_sede(self.page, 36), 
                     bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(icon=ft.Icons.CLOSE,
                                           on_click=self._confirmar_salida),
@@ -1577,7 +1771,7 @@ class ResultadoQuizView:
             route="/resultado_quiz", scroll=ft.ScrollMode.AUTO,
             padding=ft.Padding(16, 0, 16, 16), bgcolor=ft.Colors.SURFACE,
             controls=[
-                ft.AppBar(title=_get_logo_sede(self.page, 22),
+                ft.AppBar(title=_get_logo_sede(self.page, 36),
                           bgcolor=ft.Colors.SURFACE,
                           automatically_imply_leading=False),
                 ft.Container(
@@ -1766,7 +1960,7 @@ class DesafioContrarrelojView:
             route="/contrarreloj", padding=0, bgcolor=ft.Colors.SURFACE,
             controls=[
                 ft.AppBar(
-                    title=_get_logo_sede(self.page, 22),
+                    title=_get_logo_sede(self.page, 36),
                     bgcolor=ft.Colors.SURFACE,
                     leading=ft.IconButton(icon=ft.Icons.CLOSE,
                                           on_click=self._confirmar_salida),
@@ -1789,7 +1983,7 @@ class ResultadoContrarrelojView:
             route="/resultado_contrarreloj", padding=ft.Padding(16, 0, 16, 16),
             bgcolor=ft.Colors.SURFACE,
             controls=[
-                ft.AppBar(title=_get_logo_sede(self.page, 22),
+                ft.AppBar(title=_get_logo_sede(self.page, 36),
                           bgcolor=ft.Colors.SURFACE,
                           automatically_imply_leading=False),
                 ft.Container(

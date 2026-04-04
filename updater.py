@@ -20,7 +20,7 @@ class AppUpdater:
     """
 
     # Única fuente de verdad de la versión instalada
-    APP_VERSION = "1.0.0"
+    APP_VERSION = "1.1.0"
 
     # Estado local: data_version y novedades pendientes de mostrar
     _ESTADO_FILE = Path(__file__).parent / "update_state.json"
@@ -194,6 +194,37 @@ class AppUpdater:
         estado.pop("pending_release_notes", None)
         AppUpdater._guardar_estado(estado)
 
+    # ── Descarga interrumpida (reanudación automática) ────────────────────────
+
+    @staticmethod
+    def save_pending_download(url: str, release_notes: str, latest_version: str) -> None:
+        """
+        Persiste los parámetros de la descarga en curso ANTES de arrancar el hilo.
+        Si el proceso muere (usuario cierra la app), al reabrir se detecta esta
+        entrada y la descarga se reanuda automáticamente sin preguntarle al usuario.
+        """
+        estado = AppUpdater._leer_estado()
+        estado["pending_download"] = {
+            "url":            url,
+            "release_notes":  release_notes,
+            "latest_version": latest_version,
+        }
+        AppUpdater._guardar_estado(estado)
+
+    @staticmethod
+    def get_pending_download() -> dict:
+        """
+        Retorna los parámetros de una descarga interrumpida, o dict vacío si no hay ninguna.
+        """
+        return AppUpdater._leer_estado().get("pending_download", {})
+
+    @staticmethod
+    def clear_pending_download() -> None:
+        """Elimina la descarga pendiente al completarse o al fallar definitivamente."""
+        estado = AppUpdater._leer_estado()
+        estado.pop("pending_download", None)
+        AppUpdater._guardar_estado(estado)
+
     # ── Descarga e instalación ────────────────────────────────────────────────
 
     @staticmethod
@@ -208,7 +239,7 @@ class AppUpdater:
         Si falla por cualquier razón, retorna la url original sin modificar.
         """
         import re
-        import requests
+        import httpx
 
         match = re.search(r"github\.com/([^/]+/[^/]+)/releases", url)
         if not match:
@@ -218,20 +249,20 @@ class AppUpdater:
         api_url = f"https://api.github.com/repos/{repo}/releases/tags/latest"
 
         try:
-            resp = requests.get(
-                api_url,
-                headers={
-                    "Authorization": f"token {token}",
-                    "Accept":        "application/vnd.github+json",
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            for asset in resp.json().get("assets", []):
-                if asset.get("name", "").endswith(".apk"):
-                    # Retornar la URL de la API (no browser_download_url),
-                    # que es la que acepta el header Accept: application/octet-stream
-                    return asset["url"]
+            with httpx.Client(timeout=30.0) as cliente:
+                resp = cliente.get(
+                    api_url,
+                    headers={
+                        "Authorization": f"token {token}",
+                        "Accept":        "application/vnd.github+json",
+                    },
+                )
+                resp.raise_for_status()
+                for asset in resp.json().get("assets", []):
+                    if asset.get("name", "").endswith(".apk"):
+                        # Retornar la URL de la API (no browser_download_url),
+                        # que es la que acepta el header Accept: application/octet-stream
+                        return asset["url"]
         except Exception:
             pass
 
@@ -254,7 +285,7 @@ class AppUpdater:
         Reporta progreso de 0.0 a 1.0 vía on_progress.
         Elimina el archivo parcial si ocurre algún error.
         """
-        import requests
+        import httpx
 
         destino = Path(destino)
 
@@ -272,29 +303,27 @@ class AppUpdater:
             headers["Accept"] = "application/vnd.github+json"
 
         try:
-            with requests.get(
-                url,
-                stream=True,
-                timeout=600,
-                allow_redirects=True,
-                headers=headers,
-            ) as resp:
-                resp.raise_for_status()
-                total      = int(resp.headers.get("Content-Length") or 0)
-                descargado = 0
-                tam_chunk  = 1024 * 1024  # 1 MB
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=httpx.Timeout(600.0),
+            ) as cliente:
+                with cliente.stream("GET", url, headers=headers) as resp:
+                    resp.raise_for_status()
+                    total      = int(resp.headers.get("content-length") or 0)
+                    descargado = 0
+                    tam_chunk  = 1024 * 1024  # 1 MB
 
-                with open(destino, "wb") as f:
-                    for bloque in resp.iter_content(chunk_size=tam_chunk):
-                        if not bloque:
-                            continue
-                        f.write(bloque)
-                        descargado += len(bloque)
-                        if total > 0:
-                            try:
-                                on_progress(min(descargado / total, 1.0))
-                            except Exception:
-                                pass
+                    with open(destino, "wb") as f:
+                        for bloque in resp.iter_bytes(chunk_size=tam_chunk):
+                            if not bloque:
+                                continue
+                            f.write(bloque)
+                            descargado += len(bloque)
+                            if total > 0:
+                                try:
+                                    on_progress(min(descargado / total, 1.0))
+                                except Exception:
+                                    pass
 
             try:
                 on_progress(1.0)

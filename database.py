@@ -361,6 +361,8 @@ def fetch_todos_para_quiz(sede: str = "Prisma") -> dict:
     No usa caché propio: los productos ya están en memoria.
     """
     prods_raw = fetch_productos()
+    cats_cache = fetch_categorias()
+    subs_cache = fetch_subcategorias()
 
     if sede != "Prisma":
         sede_upper = sede.strip().upper()
@@ -368,24 +370,34 @@ def fetch_todos_para_quiz(sede: str = "Prisma") -> dict:
     else:
         prods = prods_raw
 
-    # Derivar categorías y subcategorías únicas de los productos filtrados
-    cats_dict: dict[str, str] = {}
-    subs_dict: dict[tuple, str] = {}
+    # Derivar categorías y subcategorías únicas, preservando la mnemotecnia de BD
+    cats_dict: dict[str, dict] = {}
+    subs_dict: dict[tuple, dict] = {}
     for p in prods:
-        ck = p["categoria_codigo"]
-        sk = p["subcategoria_codigo"]
+        ck     = p["categoria_codigo"]
+        sk     = p["subcategoria_codigo"]
+        sede_p = (p.get("sede") or "").strip().upper()
         if ck not in cats_dict:
-            cats_dict[ck] = p.get("categoria_nombre") or ck
+            cat_data = cats_cache.get((sede_p, ck), {})
+            cats_dict[ck] = {
+                "nombre":      p.get("categoria_nombre") or ck,
+                "mnemotecnia": cat_data.get("mnemotecnia"),
+            }
         if (ck, sk) not in subs_dict:
-            subs_dict[(ck, sk)] = p.get("subcategoria_nombre") or sk
+            sub_data = subs_cache.get((sede_p, ck, sk), {})
+            subs_dict[(ck, sk)] = {
+                "nombre":      p.get("subcategoria_nombre") or sk,
+                "mnemotecnia": sub_data.get("mnemotecnia"),
+            }
 
     return {
         "categorias": [
-            {"codigo": k, "nombre": v, "mnemotecnia": None}
+            {"codigo": k, "nombre": v["nombre"], "mnemotecnia": v["mnemotecnia"]}
             for k, v in sorted(cats_dict.items())
         ],
         "subcategorias": [
-            {"categoria_codigo": k[0], "codigo": k[1], "nombre": v, "mnemotecnia": None}
+            {"categoria_codigo": k[0], "codigo": k[1],
+             "nombre": v["nombre"], "mnemotecnia": v["mnemotecnia"]}
             for k, v in sorted(subs_dict.items())
         ],
         "productos": prods,

@@ -184,6 +184,20 @@ class EstadoQuiz:
         self.indice_actual += 1
         return correcta
 
+    def registrar_error(self, opcion: str) -> None:
+        """Registra un intento incorrecto SIN avanzar a la siguiente pregunta.
+        Usado en modos con reintento para penalizar sin bloquear la pregunta."""
+        pregunta = self.pregunta_actual
+        if pregunta is None:
+            return
+        self.errores += 1
+        self.respuestas.append(RespuestaQuiz(
+            enunciado=pregunta.enunciado,
+            respuesta_correcta=pregunta.respuesta_correcta,
+            respuesta_dada=opcion,
+            correcta=False,
+        ))
+
 
 def _generar_distractores(correcto: str, pool: list[str], n: int = 3) -> list[str]:
     """Elige n valores del pool que sean distintos al correcto."""
@@ -215,7 +229,7 @@ def crear_partida_quiz(datos: dict, cantidad: int, modo: str = "mix", num_opcion
                 enunciado=cat["nombre"],
                 respuesta_correcta=cat["codigo"],
                 opciones=opciones,
-                mnemotecnia=f"Categoría {cat['codigo']}: {cat['nombre']}",
+                mnemotecnia=cat.get("mnemotecnia") or f"Categoría {cat['codigo']}: {cat['nombre']}",
             ))
 
     # ── Preguntas de SUBCATEGORÍA ─────────────────────────────────────────────
@@ -231,7 +245,7 @@ def crear_partida_quiz(datos: dict, cantidad: int, modo: str = "mix", num_opcion
                 enunciado=sub["nombre"],
                 respuesta_correcta=correcto,
                 opciones=opciones,
-                mnemotecnia=f"Subcategoría {correcto}: {sub['nombre']}",
+                mnemotecnia=sub.get("mnemotecnia") or f"Subcategoría {correcto}: {sub['nombre']}",
             ))
 
     # ── Preguntas de PRODUCTO ─────────────────────────────────────────────────
