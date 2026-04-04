@@ -1,5 +1,5 @@
 [tool.flet]
-app_name = "SKU"
+app_name = "SKUs App"
 app_version = "1.0.0"
 org = "com.tuempresa.catalogoproductos"
 
@@ -11,6 +11,7 @@ exclude = [
     "*.env",
     ".env",
     "CLAUDE.md",
+    "MANUAL_USUARIO.md",
     "README.md",
     "requirements.txt",
     "upload_data.py"

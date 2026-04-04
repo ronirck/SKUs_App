@@ -27,6 +27,7 @@ def estado_cargando(mensaje: str = "Cargando...") -> ft.Container:
     return ft.Container(
         expand=True, alignment=ALIGN_CENTER,
         content=ft.Column(
+            alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=16,
             controls=[
                 ft.ProgressRing(width=40, height=40, stroke_width=3),
