@@ -19,7 +19,9 @@ _SEDE_ICONOS = {
 
 def configurar_pagina(page: ft.Page) -> None:
     import os
+    from config import SEDE_COLORS
     sede = preferences.get_sede()
+    color_seed = SEDE_COLORS.get(sede, COLOR_SEED)
     ico_rel = _SEDE_ICONOS.get(sede, "Images/Prisma.ico")
     abs_icon_path = os.path.abspath(ico_rel)
 
@@ -32,7 +34,7 @@ def configurar_pagina(page: ft.Page) -> None:
         page.window.icon = abs_icon_path
 
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.theme = ft.Theme(color_scheme_seed=COLOR_SEED)
+    page.theme = ft.Theme(color_scheme_seed=color_seed)
     if page.platform in (
         ft.PagePlatform.WINDOWS,
         ft.PagePlatform.MACOS,

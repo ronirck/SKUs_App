@@ -16,6 +16,7 @@ import auth
 import database
 import game_state as gs
 import preferences
+from config import APP_TITLE, COLOR_SEED, SEDE_COLORS
 from updater import AppUpdater
 from components import (
     ALIGN_CENTER,
@@ -484,6 +485,12 @@ class GuiaEstudioView:
         _modo_actual_guia    = _MODO_INFALTABLES
         _catalogo_arbol_dict  = {}
         _catalogo_tiles_cache = []
+        
+        # Actualizar tema a FEBECA
+        color_seed = SEDE_COLORS.get("FEBECA", COLOR_SEED)
+        self.page.theme = ft.Theme(color_scheme_seed=color_seed)
+        self.page.update()
+        
         GuiaEstudioView(self.page).mount()
 
     def _ir_a_sede(self, sede: str) -> None:
@@ -502,11 +509,16 @@ class GuiaEstudioView:
         global _catalogo_arbol_dict, _catalogo_tiles_cache
         _catalogo_arbol_dict  = {}
         _catalogo_tiles_cache = []
-        # 4. Actualizar ícono de ventana
+        # 4. Actualizar ícono de ventana y TEMA
         try:
             info = _SEDES_INFO.get(sede, _SEDES_INFO["Prisma"])
             if hasattr(self.page, "window"):
                 self.page.window.icon = os.path.abspath(info["ico"])
+            
+            # Cambiar el color semilla del tema
+            color_seed = SEDE_COLORS.get(sede, COLOR_SEED)
+            self.page.theme = ft.Theme(color_scheme_seed=color_seed)
+            self.page.update()
         except Exception:
             pass
         GuiaEstudioView(self.page).mount()
@@ -910,27 +922,27 @@ class GuiaEstudioView:
                         ft.Container(
                             margin=ft.Margin(16, 0, 16, 12),
                             padding=ft.Padding(12, 12, 12, 12),
-                            bgcolor=ft.Colors.BLUE_50,
-                            border=ft.Border.all(1, ft.Colors.BLUE_400),
+                            bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                            border=ft.Border.all(1, ft.Colors.PRIMARY),
                             border_radius=12,
                             content=ft.Row(spacing=16, controls=[
                                 ft.Container(
-                                    bgcolor=ft.Colors.BLUE_500,
+                                    bgcolor=ft.Colors.PRIMARY,
                                     padding=ft.Padding(8, 6, 8, 6),
                                     border_radius=8,
-                                    content=ft.Text("XX-XX-XXX", color=ft.Colors.WHITE,
+                                    content=ft.Text("XX-XX-XXX", color=ft.Colors.ON_PRIMARY,
                                                     weight=ft.FontWeight.BOLD, size=16),
                                 ),
                                 ft.Column(expand=True, spacing=2, controls=[
                                     ft.Text("Estructura del Código:", size=13,
-                                            weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                                            weight=ft.FontWeight.BOLD, color=ft.Colors.ON_PRIMARY_CONTAINER),
                                     ft.Row(spacing=4, controls=[
-                                        ft.Text("XX", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800, size=12),
-                                        ft.Text("Cat |", color=ft.Colors.BLUE_700, size=12),
-                                        ft.Text("XX", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800, size=12),
-                                        ft.Text("Sub |", color=ft.Colors.BLUE_700, size=12),
-                                        ft.Text("XXX", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800, size=12),
-                                        ft.Text("Prod", color=ft.Colors.BLUE_700, size=12),
+                                        ft.Text("XX", weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY, size=12),
+                                        ft.Text("Cat |", color=ft.Colors.ON_PRIMARY_CONTAINER, size=12),
+                                        ft.Text("XX", weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY, size=12),
+                                        ft.Text("Sub |", color=ft.Colors.ON_PRIMARY_CONTAINER, size=12),
+                                        ft.Text("XXX", weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY, size=12),
+                                        ft.Text("Prod", color=ft.Colors.ON_PRIMARY_CONTAINER, size=12),
                                     ]),
                                 ]),
                             ]),
@@ -1014,6 +1026,12 @@ class DesafiosView:
             preferences.set_sede(nueva_sede)
             database.invalidar_cache_catalogo()
             database.re_enriquecer_productos()
+            
+            # Cambiar el color semilla del tema
+            color_seed = SEDE_COLORS.get(nueva_sede, COLOR_SEED)
+            self.page.theme = ft.Theme(color_scheme_seed=color_seed)
+            self.page.update()
+            
             DesafiosView(self.page).mount()
 
         return ft.PopupMenuButton(
@@ -1071,7 +1089,7 @@ class DesafiosView:
                                     titulo="Reto Categorías",
                                     subtitulo="Identifica la categoría principal",
                                     descripcion="Básico - Se muestra el inicio del código",
-                                    color=ft.Colors.BLUE,
+                                    color=ft.Colors.PRIMARY,
                                     on_click=lambda _: ConfigurarPartidaView(self.page, "categorias").mount(),
                                 ),
                                 self._card(
@@ -1427,7 +1445,7 @@ class ConfigurarPartidaView:
 
     def _color(self):
         return {
-            "categorias":    ft.Colors.BLUE,
+            "categorias":    ft.Colors.PRIMARY,
             "subcategorias": ft.Colors.TEAL,
             "productos":     ft.Colors.DEEP_PURPLE,
             "contrarreloj":  ft.Colors.RED_ACCENT_700
@@ -1559,7 +1577,7 @@ class QuizView:
 
     def _color(self):
         return {
-            "categorias":    ft.Colors.BLUE,
+            "categorias":    ft.Colors.PRIMARY,
             "subcategorias": ft.Colors.TEAL,
             "productos":     ft.Colors.DEEP_PURPLE
         }.get(self.modo, ft.Colors.PRIMARY)
