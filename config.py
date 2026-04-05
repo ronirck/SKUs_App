@@ -14,7 +14,7 @@ WINDOW_WIDTH:     int = 390
 WINDOW_HEIGHT:    int = 844
 COLOR_SEED:       str = "blue"
 
-SEDE_COLORS: dict[str, str] = {
+CASA_COLORS: dict[str, str] = {
     "Prisma":  "blue",
     "FEBECA":  "#0a94d2",
     "SILLACA": "#e40873",

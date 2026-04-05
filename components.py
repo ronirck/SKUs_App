@@ -11,14 +11,22 @@ ALIGN_CENTER = ft.alignment.Alignment(0, 0)
 
 def mostrar_snackbar(page: ft.Page, mensaje: str, error: bool = False) -> None:
     try:
+        # Intentar mostrar el snackbar de la forma más compatible posible
         sb = ft.SnackBar(
-            open=True,
             content=ft.Text(mensaje),
             bgcolor=ft.Colors.ERROR_CONTAINER if error else None,
             action="OK",
         )
-        page.overlay.append(sb)
-        page.update()
+        
+        if hasattr(page, "show_snack_bar"):
+            page.show_snack_bar(sb)
+        else:
+            page.overlay.append(sb)
+            try:
+                sb.open = True
+            except Exception:
+                pass
+            page.update()
     except Exception:
         pass
 
@@ -88,7 +96,7 @@ def tarjeta_producto(producto: dict) -> ft.Container:
         margin=ft.Margin(0, 0, 0, 12),
         padding=ft.Padding(16, 16, 16, 16),
         border_radius=12,
-        bgcolor=ft.Colors.SURFACE_CONTAINER,
+        bgcolor=ft.Colors.WHITE,
         border=ft.Border(
             left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT),
             right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT),

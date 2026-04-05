@@ -17,8 +17,8 @@ from config import SUPABASE_URL, SUPABASE_KEY
 _client: Optional[Client] = None
 
 # ── Cachés en memoria ─────────────────────────────────────────────────────────
-_cache_categorias:    Optional[dict] = None   # clave: (sede, codigo)
-_cache_subcategorias: Optional[dict] = None   # clave: (sede, cat_codigo, codigo)
+_cache_categorias:    Optional[dict] = None   # clave: (casa, codigo)
+_cache_subcategorias: Optional[dict] = None   # clave: (casa, cat_codigo, codigo)
 _cache_productos:     Optional[list] = None
 
 # ── Cache en disco ────────────────────────────────────────────────────────────
@@ -198,8 +198,8 @@ def actualizar_ultimo_acceso(usuario_id: str) -> None:
 
 def fetch_categorias() -> dict:
     """
-    Retorna todas las categorías de todas las sedes.
-    Clave: (sede_upper, codigo) → {"nombre": ..., "mnemotecnia": ...}
+    Retorna todas las categorías de todas las casas.
+    Clave: (casa_upper, codigo) → {"nombre": ..., "mnemotecnia": ...}
     """
     global _cache_categorias
     if _cache_categorias is not None:
@@ -216,8 +216,8 @@ def fetch_categorias() -> dict:
 
 def fetch_subcategorias() -> dict:
     """
-    Retorna todas las subcategorías de todas las sedes.
-    Clave: (sede_upper, cat_codigo, codigo) → {"nombre": ..., "mnemotecnia": ...}
+    Retorna todas las subcategorías de todas las casas.
+    Clave: (casa_upper, cat_codigo, codigo) → {"nombre": ..., "mnemotecnia": ...}
     """
     global _cache_subcategorias
     if _cache_subcategorias is not None:
@@ -237,7 +237,7 @@ def fetch_subcategorias() -> dict:
 
 
 def invalidar_cache_catalogo() -> None:
-    """Limpia los cachés de categorías y subcategorías (al cambiar de sede)."""
+    """Limpia los cachés de categorías y subcategorías (al cambiar de casa)."""
     global _cache_categorias, _cache_subcategorias
     _cache_categorias    = None
     _cache_subcategorias = None
@@ -255,11 +255,11 @@ def re_enriquecer_productos() -> None:
     cats = fetch_categorias()
     subs = fetch_subcategorias()
     for p in _cache_productos:
-        ck     = p.get("categoria_codigo", "")
-        sk     = p.get("subcategoria_codigo", "")
-        sede_p = (p.get("sede") or "").strip().upper()
-        p["categoria_nombre"]    = cats.get((sede_p, ck), {"nombre": ck})["nombre"]
-        p["subcategoria_nombre"] = subs.get((sede_p, ck, sk), {"nombre": sk})["nombre"]
+        ck      = p.get("categoria_codigo", "")
+        sk      = p.get("subcategoria_codigo", "")
+        casa_p  = (p.get("sede") or "").strip().upper()
+        p["categoria_nombre"]    = cats.get((casa_p, ck), {"nombre": ck})["nombre"]
+        p["subcategoria_nombre"] = subs.get((casa_p, ck, sk), {"nombre": sk})["nombre"]
 
 
 def fetch_productos() -> list[dict]:
@@ -330,13 +330,13 @@ def fetch_productos() -> list[dict]:
 
             if p.get("codigo_completo"):
                 p["codigo_completo"] = p["codigo_completo"].strip()
-            sede_p = p["sede"] if p.get("sede") else ""
-            if sede_p:
-                p["sede"] = sede_p.strip().upper()
-            sede_p = p["sede"]
+            casa_p = p["sede"] if p.get("sede") else ""
+            if casa_p:
+                p["sede"] = casa_p.strip().upper()
+            casa_p = p["sede"]
 
-            cat_data = cats.get((sede_p, ck), {"nombre": ck})
-            sub_data = subs.get((sede_p, ck, sk), {"nombre": sk})
+            cat_data = cats.get((casa_p, ck), {"nombre": ck})
+            sub_data = subs.get((casa_p, ck, sk), {"nombre": sk})
 
             p["categoria_nombre"]    = cat_data["nombre"]
             p["subcategoria_nombre"] = sub_data["nombre"]
@@ -353,20 +353,20 @@ def fetch_productos() -> list[dict]:
 
 # ── Quiz ──────────────────────────────────────────────────────────────────────
 
-def fetch_todos_para_quiz(sede: str = "Prisma") -> dict:
+def fetch_todos_para_quiz(casa: str = "Prisma") -> dict:
     """
-    Retorna categorías, subcategorías y productos filtrados por sede.
+    Retorna categorías, subcategorías y productos filtrados por casa.
     Las categorías y subcategorías se derivan de los productos ya cargados,
-    garantizando que reflejen exactamente la sede seleccionada.
+    garantizando que reflejen exactamente la casa seleccionada.
     No usa caché propio: los productos ya están en memoria.
     """
     prods_raw = fetch_productos()
     cats_cache = fetch_categorias()
     subs_cache = fetch_subcategorias()
 
-    if sede != "Prisma":
-        sede_upper = sede.strip().upper()
-        prods = [p for p in prods_raw if (p.get("sede") or "").upper() == sede_upper]
+    if casa != "Prisma":
+        casa_upper = casa.strip().upper()
+        prods = [p for p in prods_raw if (p.get("sede") or "").upper() == casa_upper]
     else:
         prods = prods_raw
 
@@ -374,17 +374,17 @@ def fetch_todos_para_quiz(sede: str = "Prisma") -> dict:
     cats_dict: dict[str, dict] = {}
     subs_dict: dict[tuple, dict] = {}
     for p in prods:
-        ck     = p["categoria_codigo"]
-        sk     = p["subcategoria_codigo"]
-        sede_p = (p.get("sede") or "").strip().upper()
+        ck      = p["categoria_codigo"]
+        sk      = p["subcategoria_codigo"]
+        casa_p  = (p.get("sede") or "").strip().upper()
         if ck not in cats_dict:
-            cat_data = cats_cache.get((sede_p, ck), {})
+            cat_data = cats_cache.get((casa_p, ck), {})
             cats_dict[ck] = {
                 "nombre":      p.get("categoria_nombre") or ck,
                 "mnemotecnia": cat_data.get("mnemotecnia"),
             }
         if (ck, sk) not in subs_dict:
-            sub_data = subs_cache.get((sede_p, ck, sk), {})
+            sub_data = subs_cache.get((casa_p, ck, sk), {})
             subs_dict[(ck, sk)] = {
                 "nombre":      p.get("subcategoria_nombre") or sk,
                 "mnemotecnia": sub_data.get("mnemotecnia"),

@@ -16,7 +16,7 @@ import auth
 import database
 import game_state as gs
 import preferences
-from config import APP_TITLE, COLOR_SEED, SEDE_COLORS
+from config import APP_TITLE, COLOR_SEED, CASA_COLORS
 from updater import AppUpdater
 from components import (
     ALIGN_CENTER,
@@ -38,13 +38,23 @@ def _nav_bar(selected: int, page: ft.Page) -> ft.NavigationBar:
     InicioView (camino de niveles) comentada - implementar en versión futura."""
     def on_change(e):
         idx = int(e.control.selected_index)
-        if idx == 0: GuiaEstudioView(page).mount()
-        elif idx == 1: DesafiosView(page).mount()
+        if idx == 0:
+            GuiaEstudioView(page).mount()
+            return
+
+        # Bloquear navegación si no hay casa seleccionada
+        if not preferences.get_casa():
+            e.control.selected_index = 0
+            page.update()
+            _mostrar_alerta_casa(page)
+            return
+
+        if idx == 1: DesafiosView(page).mount()
         elif idx == 2: PerfilView(page).mount()
 
     return ft.NavigationBar(
         selected_index=selected,
-        bgcolor=ft.Colors.SURFACE,
+        bgcolor=ft.Colors.WHITE,
         indicator_color=ft.Colors.PRIMARY_CONTAINER,
         on_change=on_change,
         destinations=[
@@ -67,18 +77,36 @@ def _nav_bar(selected: int, page: ft.Page) -> ft.NavigationBar:
     )
 
 
-def _get_logo_sede(page: ft.Page, height: int = 100) -> ft.Image:
-    """Retorna el widget del logo oficial de la sede activa."""
-    sede = preferences.get_sede()
-    info = _SEDES_INFO.get(sede, _SEDES_INFO["Prisma"])
+def _mostrar_alerta_casa(page: ft.Page):
+    """Muestra un aviso indicando que se debe elegir una casa."""
+    def cerrar_alerta(_):
+        alerta.open = False
+        page.update()
+
+    alerta = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Selección requerida"),
+        content=ft.Text("Debes elegir una casa en el menú desplegable para continuar."),
+        actions=[ft.TextButton("Entendido", on_click=cerrar_alerta)],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.dialog = alerta
+    alerta.open = True
+    page.update()
+
+
+def _get_logo_casa(page: ft.Page, height: int = 100) -> ft.Image:
+    """Retorna el widget del logo oficial de la casa activa."""
+    casa = preferences.get_casa()
+    info = _CASAS_INFO.get(casa, _CASAS_INFO["Prisma"])
     return ft.Image(
         src=info["logo"],
         height=height,
         fit="contain",
     )
 
-# Mapa sede → logo e ícono
-_SEDES_INFO: dict[str, dict[str, str]] = {
+# Mapa casa → logo e ícono
+_CASAS_INFO: dict[str, dict[str, str]] = {
     "Prisma":  {"logo": "Images/Prisma.png",  "ico": "Images/Prisma.ico"},
     "FEBECA":  {"logo": "Images/Febeca.png",  "ico": "Images/Febeca.ico"},
     "SILLACA": {"logo": "Images/Sillaca.png", "ico": "Images/Sillaca.ico"},
@@ -141,7 +169,7 @@ _catalogo_tiles_cache: list[ft.Control] = []
 # Cadena centinela para el modo "Infaltables FEBECA".
 # Cuando está activo, se filtran solo los productos de FEBECA con imagen_url.
 _MODO_INFALTABLES = "INFALTABLES_FEBECA"
-_modo_actual_guia: str = ""   # vacío = modo normal (usa la sede de preferences)
+_modo_actual_guia: str = ""   # vacío = modo normal (usa la casa de preferences)
 
 
 def _precargar_catalogo(page) -> None:
@@ -187,11 +215,11 @@ class GuiaEstudioView:
             expand=True,
             controls=[estado_cargando("Cargando catálogo...")],
         )
-        # _modo_actual_guia tiene precedencia; si está vacío, usar la sede guardada
-        self._sede_actual: str = _modo_actual_guia if _modo_actual_guia else preferences.get_sede()
+        # _modo_actual_guia tiene precedencia; si está vacío, usar la casa guardada
+        self._casa_actual: str = _modo_actual_guia if _modo_actual_guia else preferences.get_casa()
         # En modo infaltables se muestra el logo de FEBECA (sus productos)
-        sede_logo = "FEBECA" if self._sede_actual == _MODO_INFALTABLES else self._sede_actual
-        info = _SEDES_INFO.get(sede_logo, _SEDES_INFO["Prisma"])
+        casa_logo = "FEBECA" if self._casa_actual == _MODO_INFALTABLES else self._casa_actual
+        info = _CASAS_INFO.get(casa_logo, _CASAS_INFO["Prisma"])
         self._logo_img = ft.Image(
             src=info["logo"],
             height=120,
@@ -205,12 +233,12 @@ class GuiaEstudioView:
         # En modo Infaltables la imagen va siempre visible en la fila del producto.
         # En otros modos va colapsada dentro del detalle (evita congestión de red
         # con cientos de imágenes simultáneas).
-        imagen_inline = bool(imagen_url and self._sede_actual == _MODO_INFALTABLES)
+        imagen_inline = bool(imagen_url and self._casa_actual == _MODO_INFALTABLES)
 
         detalle_controles = [
             ft.Container(
                 padding=ft.Padding(16, 8, 16, 12),
-                bgcolor=ft.Colors.SURFACE,
+                bgcolor=ft.Colors.WHITE,
                 content=ft.Row(spacing=8, controls=[
                     ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
                             color=ft.Colors.TERTIARY),
@@ -225,7 +253,7 @@ class GuiaEstudioView:
             detalle_controles.append(
                 ft.Container(
                     padding=ft.Padding(16, 0, 16, 16),
-                    bgcolor=ft.Colors.SURFACE,
+                    bgcolor=ft.Colors.WHITE,
                     content=ft.Image(
                         src=imagen_url,
                         height=180,
@@ -357,7 +385,7 @@ class GuiaEstudioView:
             content=ft.Column(spacing=0, controls=[
                 ft.Container(
                     padding=ft.Padding(20, 12, 16, 12),
-                    bgcolor=ft.Colors.SURFACE_CONTAINER,
+                    bgcolor=ft.Colors.WHITE,
                     on_click=toggle, ink=True,
                     content=ft.Row(
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -461,46 +489,51 @@ class GuiaEstudioView:
             ]),
         )
 
-    # -- Filtro por sede -------------------------------------------------------
+    # -- Filtro por casa -------------------------------------------------------
 
-    def _get_prods_sede(self) -> list[dict]:
+    def _get_prods_casa(self) -> list[dict]:
         """Retorna los productos filtrados según el modo activo."""
-        if self._sede_actual == _MODO_INFALTABLES:
+        if self._casa_actual == _MODO_INFALTABLES:
             # Solo productos FEBECA que tienen imagen cargada
             return [
                 p for p in _catalogo_cache
                 if (p.get("sede") or "").upper() == "FEBECA"
                 and p.get("imagen_url")
             ]
-        if not self._sede_actual:
+        if not self._casa_actual:
             return []
-        sede_upper = self._sede_actual.strip().upper()
-        return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == sede_upper]
+        casa_upper = self._casa_actual.strip().upper()
+        return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == casa_upper]
 
     def _ir_a_infaltables_febeca(self) -> None:
         """Activa el modo Infaltables FEBECA: muestra solo productos con imagen."""
         global _modo_actual_guia, _catalogo_arbol_dict, _catalogo_tiles_cache
-        if self._sede_actual == _MODO_INFALTABLES:
+        if self._casa_actual == _MODO_INFALTABLES:
             return
         _modo_actual_guia    = _MODO_INFALTABLES
         _catalogo_arbol_dict  = {}
         _catalogo_tiles_cache = []
         
-        # Actualizar tema a FEBECA
-        color_seed = SEDE_COLORS.get("FEBECA", COLOR_SEED)
-        self.page.theme = ft.Theme(color_scheme_seed=color_seed)
+        # Actualizar tema a FEBECA pero manteniendo fondos blancos
+        color_seed = CASA_COLORS.get("FEBECA", COLOR_SEED)
+        self.page.theme = ft.Theme(
+            color_scheme_seed=color_seed,
+            color_scheme=ft.ColorScheme(
+                surface=ft.Colors.WHITE,
+            ),
+        )
         self.page.update()
         
         GuiaEstudioView(self.page).mount()
 
-    def _ir_a_sede(self, sede: str) -> None:
-        """Guarda la nueva sede, re-enriquece los productos y recarga la vista."""
+    def _ir_a_casa(self, casa: str) -> None:
+        """Guarda la nueva casa, re-enriquece los productos y recarga la vista."""
         import os
         global _modo_actual_guia
-        _modo_actual_guia = ""   # salir de cualquier modo especial al elegir sede
-        if sede == self._sede_actual:
+        _modo_actual_guia = ""   # salir de cualquier modo especial al elegir casa
+        if casa == self._casa_actual:
             return
-        preferences.set_sede(sede)
+        preferences.set_casa(casa)
         # 1. Limpiar cachés de cats/subs → re-fetch desde Supabase
         database.invalidar_cache_catalogo()
         # 2. Re-enriquecer productos en memoria con los nuevos nombres
@@ -511,13 +544,18 @@ class GuiaEstudioView:
         _catalogo_tiles_cache = []
         # 4. Actualizar ícono de ventana y TEMA
         try:
-            info = _SEDES_INFO.get(sede, _SEDES_INFO["Prisma"])
+            info = _CASAS_INFO.get(casa, _CASAS_INFO["Prisma"])
             if hasattr(self.page, "window"):
                 self.page.window.icon = os.path.abspath(info["ico"])
             
-            # Cambiar el color semilla del tema
-            color_seed = SEDE_COLORS.get(sede, COLOR_SEED)
-            self.page.theme = ft.Theme(color_scheme_seed=color_seed)
+            # Cambiar el color semilla del tema pero manteniendo fondos blancos
+            color_seed = CASA_COLORS.get(casa, COLOR_SEED)
+            self.page.theme = ft.Theme(
+                color_scheme_seed=color_seed,
+                color_scheme=ft.ColorScheme(
+                    surface=ft.Colors.WHITE,
+                ),
+            )
             self.page.update()
         except Exception:
             pass
@@ -541,19 +579,19 @@ class GuiaEstudioView:
             try:
                 cats_data = database.fetch_categorias()
                 # En modo infaltables los productos son de FEBECA → usar su clave
-                sede_upper = (
-                    "FEBECA" if self._sede_actual == _MODO_INFALTABLES
-                    else (self._sede_actual or "").strip().upper()
+                casa_upper = (
+                    "FEBECA" if self._casa_actual == _MODO_INFALTABLES
+                    else (self._casa_actual or "").strip().upper()
                 )
             except Exception:
                 cats_data  = {}
-                sede_upper = ""
+                casa_upper = ""
 
             arbol = {}
             for p in productos:
                 cc, sc = p["categoria_codigo"], p["subcategoria_codigo"]
                 if cc not in arbol:
-                    cat_info = cats_data.get((sede_upper, cc)) or {}
+                    cat_info = cats_data.get((casa_upper, cc)) or {}
                     arbol[cc] = {
                         "nombre":      p.get("categoria_nombre", cc) or cc,
                         "subs":        {},
@@ -605,12 +643,12 @@ class GuiaEstudioView:
     def _fetch(self) -> None:
         global _catalogo_cache, _catalogo_cargado
 
-        # Sin sede seleccionada → mostrar indicación, no cargar nada
-        if not self._sede_actual:
+        # Sin casa seleccionada → mostrar indicación, no cargar nada
+        if not self._casa_actual:
             self._lista_view.controls.clear()
             self._lista_view.controls.append(estado_vacio(
                 "Elige tu casa",
-                "Usa el menú desplegable para seleccionar tu sede.",
+                "Usa el menú desplegable para seleccionar tu casa.",
             ))
             self.page.update()
             return
@@ -630,7 +668,7 @@ class GuiaEstudioView:
         try:
             if _catalogo_cargado and _catalogo_cache:
                 # Cache en memoria listo — reconstruir controles frescos
-                _mostrar_o_error(self._get_prods_sede())
+                _mostrar_o_error(self._get_prods_casa())
                 return
 
             # Mostrar skeleton mientras se espera la carga (red o disco)
@@ -648,7 +686,7 @@ class GuiaEstudioView:
                 return
             _catalogo_cache   = productos
             _catalogo_cargado = True
-            _mostrar_o_error(self._get_prods_sede())
+            _mostrar_o_error(self._get_prods_casa())
         except Exception as exc:
             self._lista_view.controls.clear()
             self._lista_view.controls.append(estado_error(
@@ -672,7 +710,7 @@ class GuiaEstudioView:
         cat_txt = (self._filtro_cat.value or "").strip().lower()
         sub_txt = (self._filtro_sub.value or "").strip().lower()
 
-        prods = self._get_prods_sede()
+        prods = self._get_prods_casa()
         cat_cod = None
         sub_cod = None
 
@@ -710,7 +748,7 @@ class GuiaEstudioView:
         # Obtener todas las categorías únicas
         cats_encontradas = sorted(list(set(
             p.get("categoria_nombre", "").strip()
-            for p in self._get_prods_sede()
+            for p in self._get_prods_casa()
             if txt in p.get("categoria_nombre", "").lower()
         )))[:5]
 
@@ -745,7 +783,7 @@ class GuiaEstudioView:
         cat_nom = self._filtro_cat.value
 
         # Obtener todas las subcategorías (filtrando por categoría si corresponde)
-        prods = self._get_prods_sede()
+        prods = self._get_prods_casa()
         if cat_nom != "Todas las Categorías":
             prods = [p for p in prods if p.get("categoria_nombre", "").strip() == cat_nom]
         
@@ -807,7 +845,7 @@ class GuiaEstudioView:
             visible=False,
             margin=ft.Margin(0, -8, 0, 0),
             padding=ft.Padding(4, 4, 4, 4),
-            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            bgcolor=ft.Colors.WHITE,
             border_radius=8,
             shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK)),
             content=self._sugerencias_cat_view
@@ -819,7 +857,7 @@ class GuiaEstudioView:
             visible=False,
             margin=ft.Margin(0, -8, 0, 0),
             padding=ft.Padding(4, 4, 4, 4),
-            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            bgcolor=ft.Colors.WHITE,
             border_radius=8,
             shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK)),
             content=self._sugerencias_view
@@ -830,16 +868,16 @@ class GuiaEstudioView:
             controls=[ft.Container(height=8)],
         )
 
-        # Etiqueta del botón: muestra el nombre del modo/sede activo
-        if self._sede_actual == _MODO_INFALTABLES:
-            _label_sede = "Infaltables FEBECA"
-        elif self._sede_actual:
-            _label_sede = self._sede_actual
+        # Etiqueta del botón: muestra el nombre del modo/casa activo
+        if self._casa_actual == _MODO_INFALTABLES:
+            _label_casa = "Infaltables FEBECA"
+        elif self._casa_actual:
+            _label_casa = self._casa_actual
         else:
-            _label_sede = None   # None → se mostrará "Elegir una casa"
+            _label_casa = None   # None → se mostrará "Elegir una casa"
 
         # PopupMenuButton: cada ítem tiene on_click propio → no depende de e.data del Dropdown
-        self._sede_btn = ft.PopupMenuButton(
+        self._casa_btn = ft.PopupMenuButton(
             content=ft.Container(
                 padding=ft.Padding(8, 6, 4, 6),
                 border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
@@ -848,9 +886,9 @@ class GuiaEstudioView:
                     spacing=2, tight=True,
                     controls=[
                         ft.Text(
-                            _label_sede if _label_sede else "Elegir una casa",
+                            _label_casa if _label_casa else "Elegir una casa",
                             size=13,
-                            color=ft.Colors.ON_SURFACE if _label_sede
+                            color=ft.Colors.ON_SURFACE if _label_casa
                                   else ft.Colors.ON_SURFACE_VARIANT,
                         ),
                         ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
@@ -859,20 +897,16 @@ class GuiaEstudioView:
             ),
             items=[
                 ft.PopupMenuItem(
-                    content="Prisma",
-                    on_click=lambda _: self._ir_a_sede("Prisma"),
-                ),
-                ft.PopupMenuItem(
                     content="FEBECA",
-                    on_click=lambda _: self._ir_a_sede("FEBECA"),
+                    on_click=lambda _: self._ir_a_casa("FEBECA"),
                 ),
                 ft.PopupMenuItem(
                     content="SILLACA",
-                    on_click=lambda _: self._ir_a_sede("SILLACA"),
+                    on_click=lambda _: self._ir_a_casa("SILLACA"),
                 ),
                 ft.PopupMenuItem(
                     content="BEVAL",
-                    on_click=lambda _: self._ir_a_sede("BEVAL"),
+                    on_click=lambda _: self._ir_a_casa("BEVAL"),
                 ),
                 ft.PopupMenuItem(),   # separador visual
                 ft.PopupMenuItem(
@@ -888,7 +922,7 @@ class GuiaEstudioView:
         view = ft.View(
             route="/guia_estudio",
             padding=0,
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             navigation_bar=_nav_bar(self.TAB, self.page),
             controls=[
                 ft.Column(
@@ -912,7 +946,7 @@ class GuiaEstudioView:
                                         controls=[
                                             ft.IconButton(icon=ft.Icons.REFRESH,
                                                           on_click=lambda _: self._refrescar()),
-                                            self._sede_btn,
+                                            self._casa_btn,
                                         ],
                                     ),
                                 ],
@@ -990,7 +1024,7 @@ class DesafiosView:
             margin=ft.Margin(16, 0, 16, 12),
             padding=ft.Padding(20, 20, 20, 20),
             border_radius=16,
-            bgcolor=ft.Colors.SURFACE_CONTAINER,
+            bgcolor=ft.Colors.WHITE,
             opacity=1.0 if habilitado else 0.45,
             on_click=on_click if habilitado else None,
             ink=habilitado,
@@ -1017,19 +1051,24 @@ class DesafiosView:
             ]),
         )
 
-    def _sede_btn(self) -> ft.PopupMenuButton:
-        """Selector de sede compacto para la cabecera de DesafiosView."""
-        sede = preferences.get_sede()
-        label = sede if sede else "Elegir una casa"
+    def _casa_btn(self) -> ft.PopupMenuButton:
+        """Selector de casa compacto para la cabecera de DesafiosView."""
+        casa = preferences.get_casa()
+        label = casa if casa else "Elegir una casa"
 
-        def cambiar(nueva_sede: str):
-            preferences.set_sede(nueva_sede)
+        def cambiar(nueva_casa: str):
+            preferences.set_casa(nueva_casa)
             database.invalidar_cache_catalogo()
             database.re_enriquecer_productos()
             
-            # Cambiar el color semilla del tema
-            color_seed = SEDE_COLORS.get(nueva_sede, COLOR_SEED)
-            self.page.theme = ft.Theme(color_scheme_seed=color_seed)
+            # Cambiar el color semilla del tema pero manteniendo fondos blancos
+            color_seed = CASA_COLORS.get(nueva_casa, COLOR_SEED)
+            self.page.theme = ft.Theme(
+                color_scheme_seed=color_seed,
+                color_scheme=ft.ColorScheme(
+                    surface=ft.Colors.WHITE,
+                ),
+            )
             self.page.update()
             
             DesafiosView(self.page).mount()
@@ -1045,14 +1084,13 @@ class DesafiosView:
                         ft.Text(
                             label,
                             size=13,
-                            color=ft.Colors.ON_SURFACE if sede else ft.Colors.ON_SURFACE_VARIANT,
+                            color=ft.Colors.ON_SURFACE if casa else ft.Colors.ON_SURFACE_VARIANT,
                         ),
                         ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=18),
                     ],
                 ),
             ),
             items=[
-                ft.PopupMenuItem(content="Prisma",  on_click=lambda _: cambiar("Prisma")),
                 ft.PopupMenuItem(content="FEBECA",  on_click=lambda _: cambiar("FEBECA")),
                 ft.PopupMenuItem(content="SILLACA", on_click=lambda _: cambiar("SILLACA")),
                 ft.PopupMenuItem(content="BEVAL",   on_click=lambda _: cambiar("BEVAL")),
@@ -1063,7 +1101,7 @@ class DesafiosView:
         view = ft.View(
             route="/desafios",
             padding=0,
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             navigation_bar=_nav_bar(self.TAB, self.page),
             controls=[
                 ft.Column(
@@ -1072,11 +1110,11 @@ class DesafiosView:
                         ft.Container(
                             padding=ft.Padding(20, 48, 20, 8),
                             content=ft.Column(spacing=4, controls=[
-                                _get_logo_sede(self.page, 120),
+                                _get_logo_casa(self.page, 120),
                                 ft.Text("Aprende los códigos de productos (SKU)",
                                         size=13, color=ft.Colors.SECONDARY),
                                 ft.Container(height=4),
-                                self._sede_btn(),
+                                self._casa_btn(),
                             ]),
                         ),
                         ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
@@ -1147,7 +1185,7 @@ class PerfilView:
             expand=True,
             padding=ft.Padding(14, 14, 14, 14),
             border_radius=14,
-            bgcolor=ft.Colors.SURFACE_CONTAINER,
+            bgcolor=ft.Colors.WHITE,
             content=ft.Column(spacing=6, controls=[
                 ft.Icon(icono, size=22, color=color),
                 ft.Text(str(valor), size=20, weight=ft.FontWeight.BOLD),
@@ -1166,6 +1204,15 @@ class PerfilView:
                 d.open = False; self.page.update()
             def confirmar(e):
                 d.open = False; self.page.update()
+                
+                # Resetear tema y preferencias de la casa, manteniendo fondo blanco
+                preferences.set_casa("")
+                self.page.theme = ft.Theme(
+                    color_scheme_seed=COLOR_SEED,
+                    color_scheme=ft.ColorScheme(
+                        surface=ft.Colors.WHITE,
+                    ),
+                )
                 
                 import local_state as ls
                 ls.limpiar()
@@ -1189,7 +1236,7 @@ class PerfilView:
         view = ft.View(
             route="/perfil",
             padding=0,
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             navigation_bar=_nav_bar(self.TAB, self.page),
             controls=[
                 ft.Column(
@@ -1300,7 +1347,7 @@ class LoginView:
     def mount(self) -> None:
         view = ft.View(
             route="/", scroll=None, padding=0,
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             vertical_alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[ft.Container(
@@ -1309,7 +1356,7 @@ class LoginView:
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=20,
                     controls=[
-                        _get_logo_sede(self.page, 120),
+                        _get_logo_casa(self.page, 120),
                         ft.Text("Códigos de Producto", size=22,
                                 weight=ft.FontWeight.BOLD,
                                 text_align=ft.TextAlign.CENTER),
@@ -1386,13 +1433,13 @@ class RegistroView:
     def mount(self) -> None:
         view = ft.View(
             route="/registro", scroll=None, padding=0,
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             vertical_alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
                 ft.AppBar(
                     title=ft.Text("Crear usuario", weight=ft.FontWeight.W_500),
-                    bgcolor=ft.Colors.SURFACE,
+                    bgcolor=ft.Colors.WHITE,
                     leading=ft.IconButton(
                         icon=ft.Icons.ARROW_BACK,
                         on_click=lambda _: LoginView(self.page).mount()),
@@ -1493,7 +1540,7 @@ class ConfigurarPartidaView:
             horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=24,
             controls=[
                 ft.Container(width=80, height=80, border_radius=24,
-                             bgcolor=ft.Colors.SURFACE_CONTAINER,
+                             bgcolor=ft.Colors.WHITE,
                              alignment=ALIGN_CENTER,
                              content=ft.Icon(self._icono(), size=44,
                                              color=self._color())),
@@ -1517,8 +1564,8 @@ class ConfigurarPartidaView:
             if not sesion:
                 LoginView(self.page).mount()
                 return
-            sede = preferences.get_sede() or "Prisma"
-            self._data = database.fetch_todos_para_quiz(sede)
+            casa = preferences.get_casa() or "Prisma"
+            self._data = database.fetch_todos_para_quiz(casa)
             self._area.content = self._build_selector()
         except Exception as exc:
             self._area.content = estado_error(
@@ -1538,11 +1585,11 @@ class ConfigurarPartidaView:
 
     def mount(self) -> None:
         view = ft.View(
-            route="/configurar", padding=0, bgcolor=ft.Colors.SURFACE,
+            route="/configurar", padding=0, bgcolor=ft.Colors.WHITE,
             controls=[
                 ft.AppBar(
-                    title=_get_logo_sede(self.page, 36),
-                    bgcolor=ft.Colors.SURFACE,
+                    title=_get_logo_casa(self.page, 36),
+                    bgcolor=ft.Colors.WHITE,
                     leading=ft.IconButton(
                         icon=ft.Icons.ARROW_BACK,
                         on_click=lambda _: DesafiosView(self.page).mount()),
@@ -1754,11 +1801,11 @@ class QuizView:
 
     def mount(self) -> None:
         view = ft.View(
-            route="/quiz", padding=0, bgcolor=ft.Colors.SURFACE,
+            route="/quiz", padding=0, bgcolor=ft.Colors.WHITE,
             controls=[
                 ft.AppBar(
-                    title=_get_logo_sede(self.page, 36), 
-                    bgcolor=ft.Colors.SURFACE,
+                    title=_get_logo_casa(self.page, 36), 
+                    bgcolor=ft.Colors.WHITE,
                     leading=ft.IconButton(icon=ft.Icons.CLOSE,
                                           on_click=self._confirmar_salida),
                 ),
@@ -1787,10 +1834,10 @@ class ResultadoQuizView:
                       else ("💪", "Sigue practicando"))
         view = ft.View(
             route="/resultado_quiz", scroll=ft.ScrollMode.AUTO,
-            padding=ft.Padding(16, 0, 16, 16), bgcolor=ft.Colors.SURFACE,
+            padding=ft.Padding(16, 0, 16, 16), bgcolor=ft.Colors.WHITE,
             controls=[
-                ft.AppBar(title=_get_logo_sede(self.page, 36),
-                          bgcolor=ft.Colors.SURFACE,
+                ft.AppBar(title=_get_logo_casa(self.page, 36),
+                          bgcolor=ft.Colors.WHITE,
                           automatically_imply_leading=False),
                 ft.Container(
                     padding=ft.Padding(24, 24, 24, 24), border_radius=20,
@@ -1892,17 +1939,10 @@ class DesafioContrarrelojView:
             
             # Feedback instantáneo y siguiente pregunta rápido
             if correcta:
-                self.page.snack_bar = ft.SnackBar(
-                    ft.Text("+1 Punto", weight=ft.FontWeight.BOLD),
-                    bgcolor=ft.Colors.GREEN, duration=600)
+                mostrar_snackbar(self.page, "+1 Punto")
             else:
-                self.page.snack_bar = ft.SnackBar(
-                    ft.Text("¡Error!", weight=ft.FontWeight.BOLD),
-                    bgcolor=ft.Colors.RED, duration=600)
-            
-            self.page.snack_bar.open = True
-            self.page.update()
-            
+                mostrar_snackbar(self.page, "¡Error!", error=True)
+
             self._mostrar_pregunta()
 
         botones = []
@@ -1975,11 +2015,11 @@ class DesafioContrarrelojView:
 
     def mount(self) -> None:
         view = ft.View(
-            route="/contrarreloj", padding=0, bgcolor=ft.Colors.SURFACE,
+            route="/contrarreloj", padding=0, bgcolor=ft.Colors.WHITE,
             controls=[
                 ft.AppBar(
-                    title=_get_logo_sede(self.page, 36),
-                    bgcolor=ft.Colors.SURFACE,
+                    title=_get_logo_casa(self.page, 36),
+                    bgcolor=ft.Colors.WHITE,
                     leading=ft.IconButton(icon=ft.Icons.CLOSE,
                                           on_click=self._confirmar_salida),
                 ),
@@ -1999,10 +2039,10 @@ class ResultadoContrarrelojView:
     def mount(self) -> None:
         view = ft.View(
             route="/resultado_contrarreloj", padding=ft.Padding(16, 0, 16, 16),
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             controls=[
-                ft.AppBar(title=_get_logo_sede(self.page, 36),
-                          bgcolor=ft.Colors.SURFACE,
+                ft.AppBar(title=_get_logo_casa(self.page, 36),
+                          bgcolor=ft.Colors.WHITE,
                           automatically_imply_leading=False),
                 ft.Container(
                     padding=ft.Padding(32, 40, 32, 40), border_radius=24,
@@ -2121,7 +2161,7 @@ class ResultadoNivelView:
         view = ft.View(
             route="/resultado_nivel",
             padding=ft.Padding(24, 48, 24, 24),
-            bgcolor=ft.Colors.SURFACE,
+            bgcolor=ft.Colors.WHITE,
             scroll=ft.ScrollMode.AUTO,
             controls=[
                 ft.Column(
