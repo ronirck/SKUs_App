@@ -18,7 +18,7 @@ class AppUpdater:
     """
 
     # Única fuente de verdad de la versión instalada
-    APP_VERSION = "1.2.0"
+    APP_VERSION = "1.0.1"
 
     # Estado local: data_version y novedades pendientes de mostrar
     _ESTADO_FILE = Path(__file__).parent / "update_state.json"
@@ -126,7 +126,11 @@ class AppUpdater:
 
         if actual < mas_rec:
             resultado["needs_update"] = True
-        if actual < minima or config.get("force_update") == "true":
+
+        # force_update puede venir como string "true"/"false" o como booleano True/False
+        force_raw = config.get("force_update", "false")
+        force_bool = str(force_raw).strip().lower() == "true"
+        if actual < minima or force_bool:
             resultado["force"] = True
 
         return resultado

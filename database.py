@@ -307,7 +307,7 @@ def fetch_productos() -> list[dict]:
                 get_client().table("productos")
                 .select(
                     "categoria_codigo, subcategoria_codigo, codigo, "
-                    "nombre, mnemotecnia, codigo_completo, imagen_url, sede"
+                    "nombre, mnemotecnia, codigo_completo, imagen_url, sede, marca"
                 )
                 .range(offset, offset + chunk_size - 1)
                 .execute().data
@@ -323,10 +323,12 @@ def fetch_productos() -> list[dict]:
             ck = p.get("categoria_codigo", "").strip() or ""
             sk = p.get("subcategoria_codigo", "").strip() or ""
             pk = p.get("codigo", "").strip() or ""
+            mk = (p.get("marca") or "").strip()
 
             p["categoria_codigo"]    = ck
             p["subcategoria_codigo"] = sk
             p["codigo"]              = pk
+            p["marca"]               = mk
 
             if p.get("codigo_completo"):
                 p["codigo_completo"] = p["codigo_completo"].strip()
@@ -369,6 +371,13 @@ def fetch_todos_para_quiz(casa: str = "Prisma") -> dict:
         prods = [p for p in prods_raw if (p.get("sede") or "").upper() == casa_upper]
     else:
         prods = prods_raw
+
+    # ── Filtro por usuario (solo Pavco para cuentas de prueba/soporte) ────────
+    import auth
+    sesion = auth.get_sesion()
+    email = (sesion.email or "").lower() if sesion else ""
+    if email in ["carmonaluise@gmail.com", "test@test.test"]:
+        prods = [p for p in prods if (p.get("marca") or "").upper() == "PAVCO"]
 
     # Derivar categorías y subcategorías únicas, preservando la mnemotecnia de BD
     cats_dict: dict[str, dict] = {}
@@ -442,28 +451,67 @@ def iniciar_sesion_uso(usuario_id: str) -> Optional[str]:
         return None
 
 
-def acumular_tiempo_sesion(sesion_id: str, segundos: int) -> None:
+def actualizar_o_crear_sesion_uso(usuario_id: str, segundos: int) -> Optional[str]:
     """
-    Suma `segundos` al duracion_seg existente del registro y actualiza fin_en.
-    Usa READ + WRITE porque Supabase no soporta UPDATE col = col + N via postgrest fácilmente.
+    Suma `segundos` al duracion_seg del registro de HOY o crea uno nuevo si cambió el día.
+    Retorna el ID de la sesión (nueva o actualizada).
     """
     if segundos <= 0:
-        return
+        return None
     try:
-        row = (
+        ahora = datetime.now(timezone.utc)
+        hoy_str = ahora.date().isoformat()
+        print(f"[DB_SESION] Usuario: {usuario_id}, Segundos: {segundos}")
+
+        # 1. Buscar la última sesión para ver si es de hoy
+        result = (
             get_client().table("sesiones_uso")
-            .select("duracion_seg")
-            .eq("id", sesion_id)
+            .select("id, inicio_en, duracion_seg")
+            .eq("usuario_id", usuario_id)
+            .order("inicio_en", desc=True)
             .limit(1)
             .execute()
         )
-        actual = (row.data[0].get("duracion_seg") or 0) if row.data else 0
-        get_client().table("sesiones_uso").update({
-            "duracion_seg": actual + segundos,
-            "fin_en":       datetime.now(timezone.utc).isoformat(),
-        }).eq("id", sesion_id).execute()
-    except Exception:
-        pass
+
+        ultima = result.data[0] if (result.data and len(result.data) > 0) else None
+
+        if ultima:
+            inicio_dt = datetime.fromisoformat(ultima["inicio_en"].replace("Z", "+00:00"))
+            if inicio_dt.date().isoformat() == hoy_str:
+                # MISMO DÍA: Actualizar fin_en y sumar segundos
+                actual = (ultima.get("duracion_seg") or 0)
+                print(f"[DB_SESION] Actualizando sesión {ultima['id']} (Hoy: {hoy_str})")
+                get_client().table("sesiones_uso").update({
+                    "duracion_seg": actual + segundos,
+                    "fin_en":       ahora.isoformat(),
+                }).eq("id", ultima["id"]).execute()
+                return ultima["id"]
+            else:
+                print(f"[DB_SESION] Diferente día. Ultima fue: {inicio_dt.date().isoformat()}, Hoy: {hoy_str}")
+        else:
+            print("[DB_SESION] No se encontró sesión previa.")
+
+        # DÍA DIFERENTE (o no hay sesión previa): Crear nuevo registro
+        new_row = {
+            "usuario_id":   usuario_id,
+            "inicio_en":    ahora.isoformat(),
+            "fin_en":       ahora.isoformat(),
+            "duracion_seg": segundos
+        }
+        res_ins = get_client().table("sesiones_uso").insert(new_row).execute()
+        
+        if res_ins.data:
+            new_id = res_ins.data[0]["id"]
+            print(f"[DB_SESION] Nueva sesión creada: {new_id}")
+            return new_id
+        else:
+            print(f"[DB_SESION] Error: insert retornó vacío. {res_ins}")
+            return None
+    except Exception as e:
+        print(f"[DB_SESION] EXCEPCIÓN: {e}")
+        return None
+
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -9,3 +9,6 @@ CLAUDE.md
 MANUAL_USUARIO.md
 .claude/
 update_state.json
+.security/
+.agents
+skills-lock.json

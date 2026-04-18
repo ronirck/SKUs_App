@@ -353,7 +353,8 @@ class GuiaEstudioView:
         )
 
     def _sub_tile(self, sub_cod: str, sub_nom: str,
-                  productos: list[dict], abierto: bool = False) -> ft.Container:
+                  productos: list[dict], abierto: bool = False,
+                  sub_mnemo: str = "") -> ft.Container:
         """
         LAZY: prod_col empieza vacío, a menos que abierto=True.
         """
@@ -362,6 +363,24 @@ class GuiaEstudioView:
             ft.Icons.KEYBOARD_ARROW_UP if abierto else ft.Icons.KEYBOARD_ARROW_DOWN,
             size=16, color=ft.Colors.OUTLINE)
         cargado   = [False]
+
+        # Panel de mnemotecnia para la subcategoría
+        mnemo_panel = ft.Container(
+            visible=abierto and bool(sub_mnemo),
+            padding=ft.Padding(24, 8, 14, 10),
+            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.SECONDARY),
+            border=ft.Border(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
+            content=ft.Row(
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=14,
+                            color=ft.Colors.TERTIARY),
+                    ft.Text(sub_mnemo, size=12, italic=True,
+                            color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                ],
+            ),
+        )
 
         def construir_productos():
             if not cargado[0]:
@@ -376,6 +395,8 @@ class GuiaEstudioView:
         def toggle(_):
             construir_productos()
             prod_col.visible = not prod_col.visible
+            if sub_mnemo:
+                mnemo_panel.visible = prod_col.visible
             icono.name = (ft.Icons.KEYBOARD_ARROW_UP if prod_col.visible
                           else ft.Icons.KEYBOARD_ARROW_DOWN)
             self.page.update()
@@ -400,6 +421,7 @@ class GuiaEstudioView:
                         ],
                     ),
                 ),
+                mnemo_panel,
                 prod_col,
             ]),
         )
@@ -439,7 +461,8 @@ class GuiaEstudioView:
                 sub_col.controls = [
                     self._sub_tile(sc, arbol_subs[sc]["nombre"],
                                    arbol_subs[sc]["prods"],
-                                   abierto=(sc == sub_a_abrir))
+                                   abierto=(sc == sub_a_abrir),
+                                   sub_mnemo=arbol_subs[sc].get("mnemotecnia", ""))
                     for sc in sorted(arbol_subs)
                 ]
                 cargado[0] = True
@@ -492,18 +515,28 @@ class GuiaEstudioView:
     # -- Filtro por casa -------------------------------------------------------
 
     def _get_prods_casa(self) -> list[dict]:
-        """Retorna los productos filtrados según el modo activo."""
+        """Retorna los productos filtrados según el modo activo y el usuario."""
+        # Filtro por usuario (solo Pavco para soporte/prueba)
+        sesion = auth.get_sesion()
+        email = (sesion.email or "").lower() if sesion else ""
+        solo_pavco = email in ["carmonaluise@gmail.com", "test@test.test"]
+
         if self._casa_actual == _MODO_INFALTABLES:
             # Solo productos FEBECA que tienen imagen cargada
-            return [
+            prods = [
                 p for p in _catalogo_cache
                 if (p.get("sede") or "").upper() == "FEBECA"
                 and p.get("imagen_url")
             ]
-        if not self._casa_actual:
-            return []
-        casa_upper = self._casa_actual.strip().upper()
-        return [p for p in _catalogo_cache if (p.get("sede") or "").upper() == casa_upper]
+        elif not self._casa_actual:
+            prods = []
+        else:
+            casa_upper = self._casa_actual.strip().upper()
+            prods = [p for p in _catalogo_cache if (p.get("sede") or "").upper() == casa_upper]
+
+        if solo_pavco:
+            return [p for p in prods if (p.get("marca") or "").upper() == "PAVCO"]
+        return prods
 
     def _ir_a_infaltables_febeca(self) -> None:
         """Activa el modo Infaltables FEBECA: muestra solo productos con imagen."""
@@ -575,9 +608,10 @@ class GuiaEstudioView:
         if es_completo and _catalogo_arbol_dict:
             arbol = _catalogo_arbol_dict
         else:
-            # Obtener mnemotecnias de categorías (ya en caché de memoria, sin red)
+            # Obtener mnemotecnias de categorías y subcategorías (ya en caché de memoria, sin red)
             try:
                 cats_data = database.fetch_categorias()
+                subs_data = database.fetch_subcategorias()
                 # En modo infaltables los productos son de FEBECA → usar su clave
                 casa_upper = (
                     "FEBECA" if self._casa_actual == _MODO_INFALTABLES
@@ -585,6 +619,7 @@ class GuiaEstudioView:
                 )
             except Exception:
                 cats_data  = {}
+                subs_data  = {}
                 casa_upper = ""
 
             arbol = {}
@@ -598,9 +633,11 @@ class GuiaEstudioView:
                         "mnemotecnia": cat_info.get("mnemotecnia") or "",
                     }
                 if sc not in arbol[cc]["subs"]:
+                    sub_info = subs_data.get((casa_upper, cc, sc)) or {}
                     arbol[cc]["subs"][sc] = {
-                        "nombre": p.get("subcategoria_nombre", sc) or sc,
-                        "prods": []
+                        "nombre":      p.get("subcategoria_nombre", sc) or sc,
+                        "prods":       [],
+                        "mnemotecnia": sub_info.get("mnemotecnia") or "",
                     }
                 arbol[cc]["subs"][sc]["prods"].append(p)
 
@@ -874,10 +911,14 @@ class GuiaEstudioView:
         elif self._casa_actual:
             _label_casa = self._casa_actual
         else:
-            _label_casa = None   # None → se mostrará "Elegir una casa"
+            _label_casa = None
 
-        # PopupMenuButton: cada ítem tiene on_click propio → no depende de e.data del Dropdown
+        # PopupMenuButton: se oculta si el usuario es carmonaluise@gmail.com o test@test.test
+        email_sesio = (auth.get_sesion().email or "").lower() if auth.get_sesion() else ""
+        es_restringido = email_sesio in ["carmonaluise@gmail.com", "test@test.test"]
+
         self._casa_btn = ft.PopupMenuButton(
+            visible=not es_restringido,
             content=ft.Container(
                 padding=ft.Padding(8, 6, 4, 6),
                 border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
@@ -1051,8 +1092,14 @@ class DesafiosView:
             ]),
         )
 
-    def _casa_btn(self) -> ft.PopupMenuButton:
+    def _casa_btn(self) -> ft.Control:
         """Selector de casa compacto para la cabecera de DesafiosView."""
+        # Se oculta si el usuario es carmonaluise@gmail.com o test@test.test (solo FEBECA/Pavco)
+        sesion = auth.get_sesion()
+        email_act = (sesion.email or "").lower() if sesion else ""
+        if email_act in ["carmonaluise@gmail.com", "test@test.test"]:
+            return ft.Container()
+
         casa = preferences.get_casa()
         label = casa if casa else "Elegir una casa"
 
@@ -1333,6 +1380,21 @@ class LoginView:
                 password=self._campo_password.value or "",
             )
             if resultado.exitoso:
+                # Forzar FEBECA para usuarios de soporte/prueba
+                email_login = (self._campo_email.value or "").lower().strip()
+                if email_login in ["carmonaluise@gmail.com", "test@test.test"]:
+                    preferences.set_casa("FEBECA")
+                    database.invalidar_cache_catalogo()
+                    database.re_enriquecer_productos()
+                    # Si ya teníamos tema de otra casa, forzar Febeca en el objeto page
+                    color_seed = CASA_COLORS.get("FEBECA", COLOR_SEED)
+                    self.page.theme = ft.Theme(
+                        color_scheme_seed=color_seed,
+                        color_scheme=ft.ColorScheme(
+                            surface=ft.Colors.WHITE,
+                        ),
+                    )
+
                 # Arrancar descarga de productos en background inmediatamente,
                 # antes de que la GuiaEstudioView la solicite.
                 self.page.run_thread(database.fetch_productos)
@@ -1647,7 +1709,7 @@ class QuizView:
 
             correcta = opcion == pregunta.respuesta_correcta
 
-            if self.modo == "categorias" and not correcta:
+            if self.modo in ["categorias", "subcategorias"] and not correcta:
                 # Modo reintento: registrar error, marcar rojo, mostrar pista,
                 # NO avanzar — el usuario puede seguir eligiendo.
                 self.partida.registrar_error(opcion)
@@ -1890,8 +1952,8 @@ class ResultadoQuizView:
         )
         _montar(self.page, view)
 
-        # Completar un desafío cuenta como actividad
-        auth.registrar_actividad()
+        # Completar un desafío cuenta como actividad y sincroniza inmediatamente
+        auth.sincronizar_ahora()
 
 
 # ------------------------------------------------------------------------------
@@ -2094,8 +2156,8 @@ class ResultadoContrarrelojView:
         )
         _montar(self.page, view)
 
-        # Completar un desafío cuenta como actividad
-        auth.registrar_actividad()
+        # Completar un desafío cuenta como actividad y sincroniza inmediatamente
+        auth.sincronizar_ahora()
 
 
 # -------------¡# ------------------------------------------------------------------------------
@@ -2197,3 +2259,6 @@ class ResultadoNivelView:
             ],
         )
         _montar(self.page, view)
+        
+        # Completar un nivel cuenta como actividad y sincroniza inmediatamente
+        auth.sincronizar_ahora()

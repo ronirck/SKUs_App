@@ -70,8 +70,9 @@ def main(page: ft.Page) -> None:
 
     page.on_disconnect = on_disconnect
 
-    # Detectar actividad por teclado
+    # Detectar actividad por teclado y toque/clic
     page.on_keyboard_event = lambda e: auth.registrar_actividad()
+    page.on_click = lambda e: auth.registrar_actividad()
 
     def corazon():
         import time
@@ -154,9 +155,23 @@ def _iniciar_app(page: ft.Page) -> None:
     apk_url        = str(resultado.get("apk_url") or "")
     release_notes  = str(resultado.get("release_notes") or "")
     latest_version = str(resultado.get("latest_version") or "1.0.0")
+    es_forzada     = bool(resultado.get("force"))
+
     controles_info: list = [
-        ft.Text(f"Versión {latest_version} ya está disponible.", weight=ft.FontWeight.BOLD),
+        ft.Text(
+            f"Versión {latest_version} ya está disponible.",
+            weight=ft.FontWeight.BOLD,
+        ),
     ]
+
+    if es_forzada:
+        controles_info.append(
+            ft.Text(
+                "Esta actualización es obligatoria. Por favor actualiza la app para continuar.",
+                color=ft.Colors.ERROR,
+                size=13,
+            )
+        )
 
     if release_notes:
         controles_info += [
@@ -168,8 +183,29 @@ def _iniciar_app(page: ft.Page) -> None:
             if linea:
                 controles_info.append(ft.Text(f"• {linea}", size=13))
 
-    # Limpiar y codificar la URL para que sea válida en navegadores
+    # Limpiar URL (sin espacios)
     url_final = apk_url.strip().replace(" ", "%20")
+
+    if url_final:
+        controles_info += [
+            ft.Divider(height=12),
+            ft.Text(
+                "Si el botón no funciona, copia este enlace en tu navegador:",
+                size=13,
+                weight=ft.FontWeight.W_500,
+            ),
+            ft.Row(
+                controls=[
+                    ft.TextField(
+                        value=url_final,
+                        read_only=True,
+                        expand=True,
+                        text_size=13,
+                    )
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        ]
 
     async def abrir_enlace(e):
         try:
@@ -193,6 +229,17 @@ def _iniciar_app(page: ft.Page) -> None:
             import os
             os._exit(0)
 
+    def mas_tarde(e):
+        """Cierra el diálogo y deja que el usuario siga usando la app."""
+        dialogo_update.open = False
+        page.update()
+
+    # Botón secundario: "Cerrar app" si es forzada, "Más tarde" si es opcional
+    if es_forzada:
+        boton_secundario = ft.TextButton("Cerrar app", on_click=cerrar_app)
+    else:
+        boton_secundario = ft.TextButton("Más tarde", on_click=mas_tarde)
+
     dialogo_update = ft.AlertDialog(
         modal=True,
         title=ft.Text("Actualización disponible 🎉"),
@@ -203,7 +250,7 @@ def _iniciar_app(page: ft.Page) -> None:
         ),
         actions=[
             ft.TextButton("⬇️ Abrir navegador", on_click=abrir_enlace),
-            ft.TextButton("Cerrar app", on_click=cerrar_app),
+            boton_secundario,
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
