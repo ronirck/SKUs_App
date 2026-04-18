@@ -1894,6 +1894,39 @@ class ResultadoQuizView:
         emoji, msg = (("🏆", "¡Excelente!") if pct >= 80
                       else ("👍", "¡Buen trabajo!") if pct >= 50
                       else ("💪", "Sigue practicando"))
+                      
+        # Enviar resultados a Supabase
+        sesion = auth.get_sesion()
+        if sesion:
+            if hasattr(self.partida, 'respuestas'):
+                detalles = [{
+                    "pregunta": r.enunciado,
+                    "respuesta_correcta": r.respuesta_correcta,
+                    "respuesta_seleccionada": r.respuesta_dada,
+                    "opciones_mostradas": getattr(r, 'opciones_mostradas', []),
+                    "fue_correcta": r.correcta
+                } for r in self.partida.respuestas]
+            else:
+                detalles = []
+            
+            duracion = int(time.time() - getattr(self.partida, 'tiempo_inicio', time.time()))
+            
+            # En modo contrarreloj el total_preguntas puede variar, usamos la suma actual
+            total_preg = self.partida.aciertos + self.partida.errores
+            if not total_preg and hasattr(self.partida, 'total_preguntas'):
+                total_preg = getattr(self.partida, 'total_preguntas')
+                
+            database.guardar_resultado_juego(
+                usuario_id=sesion.id,
+                tipo_juego=self.modo,
+                aciertos=self.partida.aciertos,
+                fallos=self.partida.errores,
+                total_preguntas=total_preg,
+                duracion_segundos=duracion,
+                configuracion=getattr(self.partida, 'configuracion', {}),
+                detalle_interacciones=detalles
+            )
+
         view = ft.View(
             route="/resultado_quiz", scroll=ft.ScrollMode.AUTO,
             padding=ft.Padding(16, 0, 16, 16), bgcolor=ft.Colors.WHITE,
@@ -2099,6 +2132,33 @@ class ResultadoContrarrelojView:
         self.page = page; self.partida = partida
 
     def mount(self) -> None:
+        # Enviar resultados a Supabase
+        sesion = auth.get_sesion()
+        if sesion:
+            if hasattr(self.partida, 'respuestas'):
+                detalles = [{
+                    "pregunta": r.enunciado,
+                    "respuesta_correcta": r.respuesta_correcta,
+                    "respuesta_seleccionada": r.respuesta_dada,
+                    "opciones_mostradas": getattr(r, 'opciones_mostradas', []),
+                    "fue_correcta": r.correcta
+                } for r in self.partida.respuestas]
+            else:
+                detalles = []
+            duracion = int(time.time() - getattr(self.partida, 'tiempo_inicio', time.time()))
+            total_preg = self.partida.aciertos + self.partida.errores
+            
+            database.guardar_resultado_juego(
+                usuario_id=sesion.id,
+                tipo_juego="contrarreloj",
+                aciertos=self.partida.aciertos,
+                fallos=self.partida.errores,
+                total_preguntas=total_preg,
+                duracion_segundos=duracion,
+                configuracion=getattr(self.partida, 'configuracion', {}),
+                detalle_interacciones=detalles
+            )
+
         view = ft.View(
             route="/resultado_contrarreloj", padding=ft.Padding(16, 0, 16, 16),
             bgcolor=ft.Colors.WHITE,
@@ -2178,6 +2238,21 @@ class ResultadoNivelView:
         total     = self.partida.total
         pct       = self.partida.porcentaje
         siguiente = self.partida.numero + 1
+
+        # Enviar resultados a Supabase
+        sesion = auth.get_sesion()
+        if sesion:
+            duracion = int(time.time() - getattr(self.partida, 'tiempo_inicio', time.time()))
+            database.guardar_resultado_juego(
+                usuario_id=sesion.id,
+                tipo_juego="niveles",
+                aciertos=aciertos,
+                fallos=self.partida.errores,
+                total_preguntas=total,
+                duracion_segundos=duracion,
+                configuracion={"nivel_id": self.partida.numero, **getattr(self.partida, 'configuracion', {})},
+                detalle_interacciones=getattr(self.partida, 'detalle_interacciones', [])
+            )
 
         if pct == 100:
             emoji, msg, color_msg = "★", "¡Perfecto!", ft.Colors.AMBER

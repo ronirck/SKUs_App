@@ -4,6 +4,7 @@ Sin dependencias de Flet ni Supabase.
 """
 
 import random
+import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional
@@ -32,6 +33,8 @@ class EstadoCodigoRoto:
     pista_activa:    bool = False
     puntos:          int = 0
     respuestas:      list[RespuestaCR] = field(default_factory=list)
+    tiempo_inicio:   float = field(default_factory=time.time)
+    configuracion:   dict = field(default_factory=dict)
 
     PUNTOS_PRIMER_INTENTO:  int = 100
     PUNTOS_SEGUNDO_INTENTO: int = 50
@@ -134,6 +137,7 @@ class RespuestaQuiz:
     enunciado:          str
     respuesta_correcta: str
     respuesta_dada:     str
+    opciones_mostradas: list[str]
     correcta:           bool
 
 
@@ -145,6 +149,8 @@ class EstadoQuiz:
     aciertos:        int = 0
     errores:         int = 0
     respuestas:      list[RespuestaQuiz] = field(default_factory=list)
+    tiempo_inicio:   float = field(default_factory=time.time)
+    configuracion:   dict = field(default_factory=dict)
 
     @property
     def pregunta_actual(self) -> Optional[PreguntaQuiz]:
@@ -179,6 +185,7 @@ class EstadoQuiz:
             enunciado=pregunta.enunciado,
             respuesta_correcta=pregunta.respuesta_correcta,
             respuesta_dada=opcion,
+            opciones_mostradas=list(pregunta.opciones),
             correcta=correcta,
         ))
         self.indice_actual += 1
@@ -195,6 +202,7 @@ class EstadoQuiz:
             enunciado=pregunta.enunciado,
             respuesta_correcta=pregunta.respuesta_correcta,
             respuesta_dada=opcion,
+            opciones_mostradas=list(pregunta.opciones),
             correcta=False,
         ))
 
@@ -285,6 +293,8 @@ class EstadoContrarreloj:
     aciertos:        int = 0
     errores:         int = 0
     respuestas:      list[RespuestaQuiz] = field(default_factory=list)
+    tiempo_inicio:   float = field(default_factory=time.time)
+    configuracion:   dict = field(default_factory=dict)
 
     @property
     def pregunta_actual(self) -> Optional[PreguntaQuiz]:
@@ -308,6 +318,7 @@ class EstadoContrarreloj:
             enunciado=pregunta.enunciado,
             respuesta_correcta=pregunta.respuesta_correcta,
             respuesta_dada=opcion,
+            opciones_mostradas=list(pregunta.opciones),
             correcta=correcta
         ))
         self.indice_actual += 1
@@ -394,6 +405,9 @@ class EstadoNivel:
     indice_actual: int = 0
     aciertos:      int = 0
     errores:       int = 0
+    tiempo_inicio: float = field(default_factory=time.time)
+    configuracion: dict = field(default_factory=dict)
+    detalle_interacciones: list[dict] = field(default_factory=list)
 
     @property
     def total(self) -> int:

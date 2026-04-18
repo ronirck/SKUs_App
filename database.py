@@ -514,6 +514,37 @@ def actualizar_o_crear_sesion_uso(usuario_id: str, segundos: int) -> Optional[st
 
 
 
+import threading
+
+def guardar_resultado_juego(
+    usuario_id: str, 
+    tipo_juego: str, 
+    aciertos: int, 
+    fallos: int, 
+    total_preguntas: int,
+    duracion_segundos: int,
+    configuracion: dict,
+    detalle_interacciones: list[dict]
+) -> None:
+    """Guarda el resultado completo de un juego en un hilo separado para no bloquear la interfaz."""
+    def _run():
+        try:
+            get_client().table("resultados_codex").insert({
+                "usuario_id": usuario_id,
+                "tipo_juego": tipo_juego,
+                "aciertos": aciertos,
+                "fallos": fallos,
+                "total_preguntas": total_preguntas,
+                "duracion_segundos": duracion_segundos,
+                "configuracion": configuracion,
+                "detalle_interacciones": detalle_interacciones
+            }).execute()
+        except Exception as e:
+            print(f"Error guardando resultado de juego: {e}")
+            
+    threading.Thread(target=_run, daemon=True).start()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # FIN DEL MÓDULO
 # ══════════════════════════════════════════════════════════════════════════════
