@@ -1477,7 +1477,7 @@ class EstadisticasView:
             content=ft.Text("Esta acción eliminará permanentemente todo tu progreso, tiempo de estudio y récords. No se puede deshacer."),
             actions=[
                 ft.TextButton("Cancelar", on_click=_cancelar),
-                ft.TextButton("Sí, resetear todo", on_click=_proceder_reset, font_color=ft.Colors.RED),
+                ft.TextButton("Sí, resetear todo", on_click=_proceder_reset, color=ft.Colors.RED),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
