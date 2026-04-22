@@ -921,9 +921,9 @@ class GuiaEstudioView:
         else:
             _label_casa = None
 
-        # PopupMenuButton: se oculta si el usuario es carmonaluise@gmail.com o test@test.test
+        # PopupMenuButton: se oculta si el usuario es carmonaluise@gmail.com o test@test.test o mirelis.cabrera.c@gmail.com
         email_sesio = (auth.get_sesion().email or "").lower() if auth.get_sesion() else ""
-        es_restringido = email_sesio in ["carmonaluise@gmail.com", "test@test.test"]
+        es_restringido = email_sesio in ["carmonaluise@gmail.com", "test@test.test", "mirelis.cabrera.c@gmail.com"]
 
         self._casa_btn = ft.PopupMenuButton(
             visible=not es_restringido,
@@ -950,12 +950,20 @@ class GuiaEstudioView:
                     on_click=lambda _: self._ir_a_casa("FEBECA"),
                 ),
                 ft.PopupMenuItem(
+                    content="COFERSA",
+                    on_click=lambda _: self._ir_a_casa("COFERSA"),
+                ),
+                ft.PopupMenuItem(
                     content="SILLACA",
                     on_click=lambda _: self._ir_a_casa("SILLACA"),
                 ),
                 ft.PopupMenuItem(
                     content="BEVAL",
                     on_click=lambda _: self._ir_a_casa("BEVAL"),
+                ),
+                ft.PopupMenuItem(
+                    content="MUNDIAL DE PARTES",
+                    on_click=lambda _: self._ir_a_casa("MUNDIAL DE PARTES"),
                 ),
                 ft.PopupMenuItem(),   # separador visual
                 ft.PopupMenuItem(
