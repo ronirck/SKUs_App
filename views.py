@@ -1432,6 +1432,18 @@ class EstadisticasView:
                         _card_stat(c_stats.get("partidas", 0), "Partidas", ft.Icons.REPEAT, ft.Colors.ORANGE),
                     ]),
                     ft.Container(height=32),
+                    
+                    ft.ElevatedButton(
+                        "Resetear Mis Estadísticas",
+                        icon=ft.Icons.DELETE_FOREVER,
+                        color=ft.Colors.WHITE,
+                        bgcolor=ft.Colors.RED_700,
+                        style=ft.ButtonStyle(
+                            shape=ft.RoundedRectangleBorder(radius=10),
+                        ),
+                        on_click=lambda _: self._confirmar_reset()
+                    ),
+                    ft.Container(height=40),
                 ]
             )
 
@@ -1439,6 +1451,42 @@ class EstadisticasView:
             self._area.content = estado_error(str(exc), on_reintentar=lambda: self.page.run_thread(self._fetch))
         
         self.page.update()
+
+    def _confirmar_reset(self):
+        def _proceder_reset(e):
+            dialogo.open = False
+            self.page.update()
+            self._ejecutar_reset()
+
+        def _cancelar(e):
+            dialogo.open = False
+            self.page.update()
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("¿Resetear estadísticas?"),
+            content=ft.Text("Esta acción eliminará permanentemente todo tu progreso, tiempo de estudio y récords. No se puede deshacer."),
+            actions=[
+                ft.TextButton("Cancelar", on_click=_cancelar),
+                ft.TextButton("Sí, resetear todo", on_click=_proceder_reset, font_color=ft.Colors.RED),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.overlay.append(dialogo)
+        dialogo.open = True
+        self.page.update()
+
+    def _ejecutar_reset(self):
+        self._area.content = estado_cargando("Eliminando datos...")
+        self.page.update()
+        
+        sesion = auth.get_sesion()
+        if sesion and database.resetear_estadisticas_usuario(sesion.id):
+            mostrar_snackbar(self.page, "¡Estadísticas reseteadas correctamente!", error=False)
+        else:
+            mostrar_snackbar(self.page, "Error al resetear estadísticas.", error=True)
+            
+        self.page.run_thread(self._fetch)
 
     def mount(self) -> None:
         view = ft.View(

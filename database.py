@@ -612,6 +612,19 @@ def fetch_estadisticas_usuario(usuario_id: str) -> dict:
             "contrarreloj": {"partidas": 0, "aciertos": 0, "fallos": 0, "tiempo_segundos": 0, "mejor_marca": 0}
         }
 
+def resetear_estadisticas_usuario(usuario_id: str) -> bool:
+    """Elimina todos los resultados y sesiones del usuario en Supabase."""
+    try:
+        # 1. Eliminar resultados de juegos
+        database_client = get_client()
+        database_client.table("resultados_codex").delete().eq("usuario_id", usuario_id).execute()
+        # 2. Eliminar sesiones de uso (esto reinicia el tiempo de estudio)
+        database_client.table("sesiones_uso").delete().eq("usuario_id", usuario_id).execute()
+        return True
+    except Exception as e:
+        print(f"Error reseteando estadísticas: {e}")
+        return False
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FIN DEL MÓDULO
