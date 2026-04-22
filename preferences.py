@@ -11,7 +11,7 @@ _DEFAULT_CASA = ""   # Sin casa → el usuario debe elegir al iniciar
 
 
 def get_casa() -> str:
-    """Retorna la casa guardada, o 'Prisma' si no hay preferencia."""
+    """Retorna la casa guardada, o 'FEBECA' si no hay preferencia."""
     try:
         if _PREFS_FILE.exists():
             data = json.loads(_PREFS_FILE.read_text(encoding="utf-8"))

@@ -98,7 +98,7 @@ def _mostrar_alerta_casa(page: ft.Page):
 def _get_logo_casa(page: ft.Page, height: int = 100) -> ft.Image:
     """Retorna el widget del logo oficial de la casa activa."""
     casa = preferences.get_casa()
-    info = _CASAS_INFO.get(casa, _CASAS_INFO["Prisma"])
+    info = _CASAS_INFO.get(casa, _CASAS_INFO["FEBECA"])
     return ft.Image(
         src=info["logo"],
         height=height,
@@ -580,7 +580,7 @@ class GuiaEstudioView:
             _catalogo_tiles_cache = []
             # 4. Actualizar ícono de ventana y TEMA
             try:
-                info = _CASAS_INFO.get(casa, _CASAS_INFO["Prisma"])
+                info = _CASAS_INFO.get(casa, _CASAS_INFO["FEBECA"])
                 if hasattr(self.page, "window"):
                     self.page.window.icon = os.path.abspath(info["ico"])
                 
@@ -1802,7 +1802,7 @@ class ConfigurarPartidaView:
             if not sesion:
                 LoginView(self.page).mount()
                 return
-            casa = preferences.get_casa() or "Prisma"
+            casa = preferences.get_casa() or "FEBECA"
             self._data = database.fetch_todos_para_quiz(casa)
             self._area.content = self._build_selector()
         except Exception as exc:

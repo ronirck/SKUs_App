@@ -355,7 +355,7 @@ def fetch_productos() -> list[dict]:
 
 # ── Quiz ──────────────────────────────────────────────────────────────────────
 
-def fetch_todos_para_quiz(casa: str = "Prisma") -> dict:
+def fetch_todos_para_quiz(casa: str = "FEBECA") -> dict:
     """
     Retorna categorías, subcategorías y productos filtrados por casa.
     Las categorías y subcategorías se derivan de los productos ya cargados,
