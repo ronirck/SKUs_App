@@ -545,6 +545,74 @@ def guardar_resultado_juego(
     threading.Thread(target=_run, daemon=True).start()
 
 
+def fetch_estadisticas_usuario(usuario_id: str) -> dict:
+    """Obtiene y calcula los KPIs del usuario desde Supabase, separando Contrarreloj."""
+    try:
+        # Obtener todos los resultados del usuario
+        response = get_client().table("resultados_codex").select("*").eq("usuario_id", usuario_id).execute()
+        resultados = response.data
+        
+        # Inicializar estructuras base
+        stats = {
+            "practica": {
+                "partidas": 0, "aciertos": 0, "fallos": 0, "tiempo_segundos": 0, "puntos_ciegos": []
+            },
+            "contrarreloj": {
+                "partidas": 0, "aciertos": 0, "fallos": 0, "tiempo_segundos": 0, "mejor_marca": 0
+            }
+        }
+        
+        if not resultados:
+            return stats
+            
+        conteo_errores_practica = {}
+        
+        for r in resultados:
+            tipo = r.get("tipo_juego", "desconocido")
+            aciertos = r.get("aciertos", 0)
+            fallos = r.get("fallos", 0)
+            tiempo = r.get("duracion_segundos", 0)
+            
+            if tipo == "contrarreloj":
+                stats["contrarreloj"]["partidas"] += 1
+                stats["contrarreloj"]["aciertos"] += aciertos
+                stats["contrarreloj"]["fallos"] += fallos
+                stats["contrarreloj"]["tiempo_segundos"] += tiempo
+                if aciertos > stats["contrarreloj"]["mejor_marca"]:
+                    stats["contrarreloj"]["mejor_marca"] = aciertos
+            else:
+                stats["practica"]["partidas"] += 1
+                stats["practica"]["aciertos"] += aciertos
+                stats["practica"]["fallos"] += fallos
+                stats["practica"]["tiempo_segundos"] += tiempo
+                
+                # Extraer Top de errores (solo de práctica)
+                detalles = r.get("detalle_interacciones") or []
+                if isinstance(detalles, str):
+                    import json
+                    try: detalles = json.loads(detalles)
+                    except: detalles = []
+                    
+                for interaccion in detalles:
+                    if not interaccion.get("fue_correcta", True):
+                        pregunta = interaccion.get("pregunta", "Desconocido")
+                        correcta = interaccion.get("respuesta_correcta", "Desconocido")
+                        clave = f"{pregunta} (Debía ser: {correcta})"
+                        conteo_errores_practica[clave] = conteo_errores_practica.get(clave, 0) + 1
+        
+        # Ordenar y sacar el Top 5 de errores en práctica
+        top_errores = sorted(conteo_errores_practica.items(), key=lambda x: x[1], reverse=True)[:5]
+        stats["practica"]["puntos_ciegos"] = [{"concepto": k, "veces": v} for k, v in top_errores]
+        
+        return stats
+    except Exception as e:
+        print(f"Error extrayendo estadísticas: {e}")
+        return {
+            "practica": {"partidas": 0, "aciertos": 0, "fallos": 0, "tiempo_segundos": 0, "puntos_ciegos": []},
+            "contrarreloj": {"partidas": 0, "aciertos": 0, "fallos": 0, "tiempo_segundos": 0, "mejor_marca": 0}
+        }
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # FIN DEL MÓDULO
 # ══════════════════════════════════════════════════════════════════════════════

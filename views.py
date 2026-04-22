@@ -566,33 +566,39 @@ class GuiaEstudioView:
         _modo_actual_guia = ""   # salir de cualquier modo especial al elegir casa
         if casa == self._casa_actual:
             return
-        preferences.set_casa(casa)
-        # 1. Limpiar cachés de cats/subs → re-fetch desde Supabase
-        database.invalidar_cache_catalogo()
-        # 2. Re-enriquecer productos en memoria con los nuevos nombres
-        database.re_enriquecer_productos()
-        # 3. Limpiar cachés de controles Flet para que el árbol se reconstruya
-        global _catalogo_arbol_dict, _catalogo_tiles_cache
-        _catalogo_arbol_dict  = {}
-        _catalogo_tiles_cache = []
-        # 4. Actualizar ícono de ventana y TEMA
+        
         try:
-            info = _CASAS_INFO.get(casa, _CASAS_INFO["Prisma"])
-            if hasattr(self.page, "window"):
-                self.page.window.icon = os.path.abspath(info["ico"])
-            
-            # Cambiar el color semilla del tema pero manteniendo fondos blancos
-            color_seed = CASA_COLORS.get(casa, COLOR_SEED)
-            self.page.theme = ft.Theme(
-                color_scheme_seed=color_seed,
-                color_scheme=ft.ColorScheme(
-                    surface=ft.Colors.WHITE,
-                ),
-            )
-            self.page.update()
-        except Exception:
-            pass
-        GuiaEstudioView(self.page).mount()
+            preferences.set_casa(casa)
+            # 1. Limpiar cachés de cats/subs → re-fetch desde Supabase
+            database.invalidar_cache_catalogo()
+            # 2. Re-enriquecer productos en memoria con los nuevos nombres
+            database.re_enriquecer_productos()
+            # 3. Limpiar cachés de controles Flet para que el árbol se reconstruya
+            global _catalogo_arbol_dict, _catalogo_tiles_cache
+            _catalogo_arbol_dict  = {}
+            _catalogo_tiles_cache = []
+            # 4. Actualizar ícono de ventana y TEMA
+            try:
+                info = _CASAS_INFO.get(casa, _CASAS_INFO["Prisma"])
+                if hasattr(self.page, "window"):
+                    self.page.window.icon = os.path.abspath(info["ico"])
+                
+                # Cambiar el color semilla del tema pero manteniendo fondos blancos
+                color_seed = CASA_COLORS.get(casa, COLOR_SEED)
+                self.page.theme = ft.Theme(
+                    color_scheme_seed=color_seed,
+                    color_scheme=ft.ColorScheme(
+                        surface=ft.Colors.WHITE,
+                    ),
+                )
+                self.page.update()
+            except Exception:
+                pass
+            GuiaEstudioView(self.page).mount()
+        except Exception as e:
+            # Revertir preferencias si falló la conexión
+            preferences.set_casa(self._casa_actual)
+            mostrar_snackbar(self.page, "Sin conexión a Internet para enlazar esta casa.", error=True)
 
     def _build_arbol(self, productos: list[dict],
                      cat_abierta: str = None,
@@ -1320,6 +1326,11 @@ class PerfilView:
                             ),
                         ),
                         ft.Container(height=8),
+                        ft.ListTile(
+                            leading=ft.Icon(ft.Icons.ANALYTICS_OUTLINED, color=ft.Colors.PRIMARY),
+                            title=ft.Text("Ver mis Estadísticas"),
+                            on_click=lambda _: EstadisticasView(self.page).mount(),
+                        ),
                         ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
                         ft.Container(height=8),
                         ft.ListTile(
@@ -1335,6 +1346,114 @@ class PerfilView:
             ],
         )
         _montar(self.page, view)
+
+
+# ------------------------------------------------------------------------------
+# ESTADÍSTICAS VIEW
+# ------------------------------------------------------------------------------
+
+class EstadisticasView:
+    def __init__(self, page: ft.Page) -> None:
+        self.page = page
+        self._area = ft.Container(expand=True, content=estado_cargando("Calculando estadísticas..."))
+
+    def _fetch(self) -> None:
+        try:
+            sesion = auth.get_sesion()
+            if not sesion:
+                LoginView(self.page).mount()
+                return
+
+            stats = database.fetch_estadisticas_usuario(sesion.id)
+            
+            p_stats = stats.get("practica", {})
+            c_stats = stats.get("contrarreloj", {})
+
+            # Práctica
+            p_total = p_stats.get("aciertos", 0) + p_stats.get("fallos", 0)
+            p_pct = round((p_stats.get("aciertos", 0) / p_total * 100)) if p_total > 0 else 0
+            p_tiempo_min = p_stats.get("tiempo_segundos", 0) // 60
+
+            # Contrarreloj
+            c_total = c_stats.get("aciertos", 0) + c_stats.get("fallos", 0)
+            c_pct = round((c_stats.get("aciertos", 0) / c_total * 100)) if c_total > 0 else 0
+            
+            def _card_stat(valor, titulo, icono, color):
+                return ft.Container(
+                    expand=True, padding=ft.Padding(16,16,16,16),
+                    border_radius=12, bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                    content=ft.Column(spacing=4, controls=[
+                        ft.Icon(icono, color=color, size=24),
+                        ft.Text(str(valor), size=22, weight=ft.FontWeight.BOLD),
+                        ft.Text(titulo, size=12, color=ft.Colors.SECONDARY)
+                    ])
+                )
+
+            lista_ciegos = []
+            for pc in p_stats.get("puntos_ciegos", []):
+                lista_ciegos.append(ft.ListTile(
+                    leading=ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.ORANGE),
+                    title=ft.Text(pc["concepto"], size=13),
+                    trailing=ft.Text(f"{pc['veces']} veces", color=ft.Colors.ERROR, size=12, weight=ft.FontWeight.BOLD),
+                    dense=True
+                ))
+            if not lista_ciegos:
+                lista_ciegos.append(ft.Container(
+                    padding=ft.Padding(16,16,16,16),
+                    content=ft.Text("¡No hay errores frecuentes registrados!", color=ft.Colors.GREEN, size=13)
+                ))
+
+            self._area.content = ft.Column(
+                expand=True, scroll=ft.ScrollMode.AUTO, spacing=16,
+                controls=[
+                    ft.Text("Modo Práctica y Retos", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY),
+                    ft.Row(spacing=12, controls=[
+                        _card_stat(f"{p_pct}%", "Efectividad", ft.Icons.CHECK_CIRCLE_OUTLINE, ft.Colors.GREEN),
+                        _card_stat(f"{p_tiempo_min}m", "Estudio", ft.Icons.TIMER_OUTLINED, ft.Colors.BLUE),
+                        _card_stat(p_stats.get("partidas", 0), "Partidas", ft.Icons.VIDEOGAME_ASSET_OUTLINED, ft.Colors.DEEP_PURPLE),
+                    ]),
+                    
+                    ft.Container(height=8),
+                    ft.Text("Puntos Ciegos (Top Errores)", size=16, weight=ft.FontWeight.BOLD),
+                    ft.Container(
+                        border_radius=12,
+                        border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                        content=ft.Column(spacing=0, controls=lista_ciegos)
+                    ),
+                    
+                    ft.Container(height=16),
+                    ft.Divider(color=ft.Colors.OUTLINE_VARIANT),
+                    ft.Container(height=8),
+                    
+                    ft.Text("Modo Contrarreloj", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_ACCENT_700),
+                    ft.Row(spacing=12, controls=[
+                        _card_stat(c_stats.get("mejor_marca", 0), "Récord", ft.Icons.EMOJI_EVENTS_OUTLINED, ft.Colors.AMBER),
+                        _card_stat(f"{c_pct}%", "Efectividad", ft.Icons.CHECK_CIRCLE_OUTLINE, ft.Colors.RED),
+                        _card_stat(c_stats.get("partidas", 0), "Partidas", ft.Icons.REPEAT, ft.Colors.ORANGE),
+                    ]),
+                    ft.Container(height=32),
+                ]
+            )
+
+        except Exception as exc:
+            self._area.content = estado_error(str(exc), on_reintentar=lambda: self.page.run_thread(self._fetch))
+        
+        self.page.update()
+
+    def mount(self) -> None:
+        view = ft.View(
+            route="/estadisticas", padding=0, bgcolor=ft.Colors.WHITE,
+            controls=[
+                ft.AppBar(
+                    title=ft.Text("Mis Estadísticas", weight=ft.FontWeight.BOLD),
+                    bgcolor=ft.Colors.WHITE,
+                    leading=ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda _: PerfilView(self.page).mount())
+                ),
+                ft.Container(expand=True, padding=ft.Padding(20, 16, 20, 16), content=self._area)
+            ]
+        )
+        _montar(self.page, view)
+        self.page.run_thread(self._fetch)
 
 
 # ------------------------------------------------------------------------------

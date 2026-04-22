@@ -49,6 +49,25 @@ En la última pestaña de la barra de navegación, podrás:
 
 ---
 
+## 5. Mis Estadísticas (KPIs)
+
+En la pestaña de **Perfil**, encontrarás el botón **"Ver mis Estadísticas"**, el cual abre tu panel analítico. Esta pantalla se divide en dos áreas principales para darte información precisa sobre tu aprendizaje separando tus condiciones de estrés temporal:
+
+**A. Modo Práctica y Retos**
+Mide tu evolución en los entrenamientos diarios:
+*   **Efectividad**: Porcentaje global de aciertos.
+*   **Estudio**: Tiempo sumado de capacitación (en minutos).
+*   **Partidas**: Número de rondas regulares completadas.
+*   **Puntos Ciegos (Top Errores)**: Una lista que te expone el _Top 5 de tus equivocaciones frecuentes_. Te dirá exactamente qué código seleccionaste mal y cuál debía ser la respuesta correcta, enumerando la cantidad de veces que tropezaste ahí. Revísalos para enfocarte en estudiar esos productos específicos en la Guía de Estudio.
+
+**B. Modo Contrarreloj**
+Mide tu rendimiento bajo estrés (tiempo). Su efectividad no se mezcla con el Modo Práctica para no perjudicar tus estadísticas si eres alguien que piensa con más calma:
+*   **Récord**: Tu máxima puntuación histórica (aciertos en 90s).
+*   **Efectividad**: Porcentaje de precisión exclusivante bajo la restricción de tiempo.
+*   **Partidas**: Número de veces que has intentado superar tu marca.
+
+---
+
 ## Consejos para el Aprendizaje
 
 1.  **Usa las Mnemotecnias**: No intentes memorizar números puros; asocia el código a la frase sugerida en la Guía de Estudio.
