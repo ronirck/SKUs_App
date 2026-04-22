@@ -237,10 +237,19 @@ def fetch_subcategorias() -> dict:
 
 
 def invalidar_cache_catalogo() -> None:
-    """Limpia los cachés de categorías y subcategorías (al cambiar de casa)."""
-    global _cache_categorias, _cache_subcategorias
+    """Limpia los cachés de categorías, subcategorías y productos para forzar recarga."""
+    global _cache_categorias, _cache_subcategorias, _cache_productos, _invalidation_count
     _cache_categorias    = None
     _cache_subcategorias = None
+    _cache_productos     = None
+    _invalidation_count += 1
+    
+    # También eliminamos el cache en disco para asegurar que traiga las nuevas sedes
+    try:
+        if _PRODUCTOS_CACHE_FILE.exists():
+            _PRODUCTOS_CACHE_FILE.unlink()
+    except Exception:
+        pass
 
 
 def re_enriquecer_productos() -> None:
