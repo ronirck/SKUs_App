@@ -376,7 +376,7 @@ def fetch_todos_para_quiz(casa: str = "Prisma") -> dict:
     import auth
     sesion = auth.get_sesion()
     email = (sesion.email or "").lower() if sesion else ""
-    if email in ["carmonaluise@gmail.com", "test@test.test"]:
+    if email in ["carmonaluise@gmail.com", "test@test.test", "mirelis.cabrera.c@gmail.com"]:
         prods = [p for p in prods if (p.get("marca") or "").upper() == "PAVCO"]
 
     # Derivar categorías y subcategorías únicas, preservando la mnemotecnia de BD

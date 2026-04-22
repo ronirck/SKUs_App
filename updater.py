@@ -18,7 +18,7 @@ class AppUpdater:
     """
 
     # Única fuente de verdad de la versión instalada
-    APP_VERSION = "1.0.1"
+    APP_VERSION = "1.0.2"
 
     # Estado local: data_version y novedades pendientes de mostrar
     _ESTADO_FILE = Path(__file__).parent / "update_state.json"
