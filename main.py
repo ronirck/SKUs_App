@@ -14,6 +14,8 @@ _CASA_ICONOS = {
     "FEBECA":  "Images/Febeca.ico",
     "SILLACA": "Images/Sillaca.ico",
     "BEVAL":   "Images/Beval.ico",
+    "COFERSA": "Images/Febeca.ico",
+    "MUNDIAL DE PARTES": "Images/Beval.ico",
 }
 
 

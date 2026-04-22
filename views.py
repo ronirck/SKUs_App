@@ -111,6 +111,8 @@ _CASAS_INFO: dict[str, dict[str, str]] = {
     "FEBECA":  {"logo": "Images/Febeca.png",  "ico": "Images/Febeca.ico"},
     "SILLACA": {"logo": "Images/Sillaca.png", "ico": "Images/Sillaca.ico"},
     "BEVAL":   {"logo": "Images/Beval.png",   "ico": "Images/Beval.ico"},
+    "COFERSA": {"logo": "Images/Febeca.png",  "ico": "Images/Febeca.ico"},
+    "MUNDIAL DE PARTES": {"logo": "Images/Beval.png",   "ico": "Images/Beval.ico"},
 }
 
 def _skeleton_catalogo() -> list[ft.Control]:

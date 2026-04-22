@@ -19,4 +19,6 @@ CASA_COLORS: dict[str, str] = {
     "FEBECA":  "#0a94d2",
     "SILLACA": "#e40873",
     "BEVAL":   "#d1df32",
+    "COFERSA": "#0a94d2",
+    "MUNDIAL DE PARTES": "#d1df32",
 }
