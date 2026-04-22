@@ -107,7 +107,6 @@ def _get_logo_casa(page: ft.Page, height: int = 100) -> ft.Image:
 
 # Mapa casa → logo e ícono
 _CASAS_INFO: dict[str, dict[str, str]] = {
-    "Prisma":  {"logo": "Images/Prisma.png",  "ico": "Images/Prisma.ico"},
     "FEBECA":  {"logo": "Images/Febeca.png",  "ico": "Images/Febeca.ico"},
     "SILLACA": {"logo": "Images/Sillaca.png", "ico": "Images/Sillaca.ico"},
     "BEVAL":   {"logo": "Images/Beval.png",   "ico": "Images/Beval.ico"},
@@ -221,7 +220,7 @@ class GuiaEstudioView:
         self._casa_actual: str = _modo_actual_guia if _modo_actual_guia else preferences.get_casa()
         # En modo infaltables se muestra el logo de FEBECA (sus productos)
         casa_logo = "FEBECA" if self._casa_actual == _MODO_INFALTABLES else self._casa_actual
-        info = _CASAS_INFO.get(casa_logo, _CASAS_INFO["Prisma"])
+        info = _CASAS_INFO.get(casa_logo, _CASAS_INFO["FEBECA"])
         self._logo_img = ft.Image(
             src=info["logo"],
             height=120,

@@ -10,7 +10,6 @@ import auth
 import preferences
 
 _CASA_ICONOS = {
-    "Prisma":  "Images/Prisma.ico",
     "FEBECA":  "Images/Febeca.ico",
     "SILLACA": "Images/Sillaca.ico",
     "BEVAL":   "Images/Beval.ico",
@@ -24,7 +23,7 @@ def configurar_pagina(page: ft.Page) -> None:
     from config import CASA_COLORS
     casa = preferences.get_casa()
     color_seed = CASA_COLORS.get(casa, COLOR_SEED)
-    ico_rel = _CASA_ICONOS.get(casa, "Images/Prisma.ico")
+    ico_rel = _CASA_ICONOS.get(casa, "Images/Febeca.ico")
     abs_icon_path = os.path.abspath(ico_rel)
 
     page.title = APP_TITLE

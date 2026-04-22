@@ -366,7 +366,7 @@ def fetch_todos_para_quiz(casa: str = "Prisma") -> dict:
     cats_cache = fetch_categorias()
     subs_cache = fetch_subcategorias()
 
-    if casa != "Prisma":
+    if casa:
         casa_upper = casa.strip().upper()
         prods = [p for p in prods_raw if (p.get("sede") or "").upper() == casa_upper]
     else:
