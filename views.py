@@ -95,10 +95,13 @@ def _mostrar_alerta_casa(page: ft.Page):
     page.update()
 
 
-def _get_logo_casa(page: ft.Page, height: int = 100) -> ft.Image:
-    """Retorna el widget del logo oficial de la casa activa."""
+def _get_logo_casa(page: ft.Page, height: int = 100) -> ft.Control:
+    """Retorna el widget del logo oficial de la casa activa o un espacio vacío."""
     casa = preferences.get_casa()
-    info = _CASAS_INFO.get(casa, _CASAS_INFO["FEBECA"])
+    if not casa or casa not in _CASAS_INFO:
+        return ft.Container(height=height) # Espacio reservado pero vacío
+        
+    info = _CASAS_INFO[casa]
     return ft.Image(
         src=info["logo"],
         height=height,
@@ -220,12 +223,16 @@ class GuiaEstudioView:
         self._casa_actual: str = _modo_actual_guia if _modo_actual_guia else preferences.get_casa()
         # En modo infaltables se muestra el logo de FEBECA (sus productos)
         casa_logo = "FEBECA" if self._casa_actual == _MODO_INFALTABLES else self._casa_actual
-        info = _CASAS_INFO.get(casa_logo, _CASAS_INFO["FEBECA"])
-        self._logo_img = ft.Image(
-            src=info["logo"],
-            height=120,
-            fit="contain",
-        )
+        
+        if not casa_logo or casa_logo not in _CASAS_INFO:
+            self._logo_img = ft.Container(height=120)
+        else:
+            info = _CASAS_INFO[casa_logo]
+            self._logo_img = ft.Image(
+                src=info["logo"],
+                height=120,
+                fit="contain",
+            )
 
     # -- Tiles -----------------------------------------------------------------
 

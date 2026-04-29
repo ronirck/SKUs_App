@@ -1,0 +1,21 @@
+AFV VENTAS
+- Interpretación del estatus administrativo del cliente. (limite de credito. Grupo Precio Catalogo Digital.)
+- Creación de nuevo pedido y cotizacion  en AFV
+- Búsqueda de productos en AFV y catalogo digital.
+- Manejo de escenarios con  listas de precios
+COBRANZA 
+- Interpretación del estatus administrativo del cliente del estado de cuenta del cliente avaluo de deudores.
+- Precarga y calculo asociado a las retenciones de IVA
+- Generación de recibos de cobro en AFV
+CATÁLOGO DIGITAL 
+- Uso del catálogo para ubicar articulos
+- Flujo de trabajo pedidos clientes afv vendedor 
+- Diferencia entre versión cliente y versión vendedor
+- Manejo de Solicitudes y de cotizaciones en ambas versiones del catalogo digital,
+SKU APP
+Utiliza la app como una herramienta para el aprendizaje de los SKU 
+Reconoce la estructura de los SKU (códigos)
+Identifica de manera rápida las categorías y subcategorías de los SKU
+Demuestra que aprendió mínimo 20 SKU's mediante el uso de la app
+Pasa los diferentes desafíos de la app. Mínimo 2 niveles de dificultad.
+Resultados a la fecha. Emitidos por la app sku.
