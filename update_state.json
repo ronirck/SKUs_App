@@ -1,7 +1,0 @@
-{
-  "data_version": "1",
-  "pending_changelog": {
-    "version": "1.1.0",
-    "cambios": "• Paleta de colores por casa: Prisma (gris), FEBECA (azul), SILLACA (rosa), BEVAL (verde).\n• Al cambiar de casa el tema de la app se actualiza al instante.\n• Si intentas entrar a Desafíos sin haber elegido tu casa, aparece un aviso que te lo recuerda.\n• Mnemotecnias de subcategorías visibles en el árbol del catálogo.\n• Mejoras en el Desafío Contrarreloj: pista visible al fallar, botón marcado en rojo."
-  }
-}

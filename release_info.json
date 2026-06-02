@@ -1,0 +1,11 @@
+{
+  "title": "[CRITICAL] v2.0.0 - Actualizacion obligatoria",
+  "target": "all",
+  "changelog": [
+    "Nueva vista de productos Infaltables en la guia de estudio",
+    "Colores y logotipos personalizados por sede",
+    "Descarga de APK mejorada con soporte de streams",
+    "Correccion de pantalla en blanco al iniciar la app en Android"
+  ],
+  "description": ""
+}

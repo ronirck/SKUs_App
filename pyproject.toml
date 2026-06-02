@@ -1,17 +1,24 @@
-[tool.flet]
-app_name = "SKUs app"
-app_version = "1.1.0"
-org = "com.tuempresa.catalogoproductos"
+[project]
+name = "skus-app"
+version = "2.0.0"
+requires-python = ">=3.11"
 
-[tool.flet.build]
+[tool.flet]
+org = "com.tuempresa"
+
+[tool.flet.android]
+split_per_abi = false
+queries_intents = [
+    { actions = ["android.intent.action.VIEW"], data = [{ scheme = "https" }] }
+]
 exclude = [
-    "Data/*",
-    "env/*",
-    "*.xlsx",
-    "*.env",
+    "base_schema.sql",
+    "config.sql",
+    "release_info.json",
     ".env",
+    "data",
+    ".claude",
     "CLAUDE.md",
-    "README.md",
-    "requirements.txt",
-    "upload_data.py"
+    "migrate_users.py",
+    "storage",
 ]
