@@ -1,4 +1,5 @@
 import flet as ft
+from collections import defaultdict
 
 COLORES_SEDE = {
     "FEBECA": ft.Colors.BLUE_400,
@@ -22,6 +23,10 @@ def admin_usuarios_view(
 ):
     from session_manager import register_interaction
 
+    is_dark = page.theme_mode == ft.ThemeMode.DARK
+    text_color = ft.Colors.WHITE if is_dark else ft.Colors.BLACK
+    text_secondary = ft.Colors.GREY_400 if is_dark else ft.Colors.GREY_700
+
     def handle_interaction(e=None):
         register_interaction(time_offset)
         if on_interaction:
@@ -29,6 +34,7 @@ def admin_usuarios_view(
 
     content_area = ft.Container(expand=True)
     usuarios_data = []
+    stats_map_ref = {}
 
     # ─── Notificaciones ───────────────────────────────────────────────────────
 
@@ -57,9 +63,11 @@ def admin_usuarios_view(
         page.update()
 
         def do_load():
+            nonlocal usuarios_data
             try:
                 from auth import get_client
                 client = get_client()
+
                 perfiles = (
                     client.table("perfil_usuario")
                     .select("*")
@@ -69,12 +77,68 @@ def admin_usuarios_view(
                 configs = client.table("usuario_config").select("*").execute()
                 cfg_map = {c["usuario_id"]: c for c in (configs.data or [])}
 
-                nonlocal usuarios_data
                 usuarios_data = []
                 for p in (perfiles.data or []):
                     cfg = cfg_map.get(p["usuario_id"], {})
-                    # Profile fields take priority so creado_en/rol are not overwritten by config
                     usuarios_data.append({**cfg, **p})
+
+                # ── Estadísticas en bloque ────────────────────────────────────
+                uids = [u["usuario_id"] for u in usuarios_data if u.get("usuario_id")]
+
+                resultados_bulk = []
+                session_bulk = []
+                if uids:
+                    try:
+                        res = (
+                            client.table("resultados_codex")
+                            .select("usuario_id, aciertos, total_preguntas")
+                            .neq("tipo_juego", "contrarreloj")
+                            .execute()
+                        )
+                        resultados_bulk = res.data or []
+                    except Exception:
+                        pass
+                    try:
+                        ses = (
+                            client.table("session_logs")
+                            .select("user_id, duration_seconds")
+                            .execute()
+                        )
+                        session_bulk = ses.data or []
+                    except Exception:
+                        pass
+
+                res_by_uid = defaultdict(lambda: {"aciertos": 0, "total": 0, "partidas": 0})
+                for r in resultados_bulk:
+                    uid = r.get("usuario_id", "")
+                    if uid:
+                        res_by_uid[uid]["aciertos"] += r.get("aciertos", 0)
+                        res_by_uid[uid]["total"] += r.get("total_preguntas", 0)
+                        res_by_uid[uid]["partidas"] += 1
+
+                sess_by_uid = defaultdict(int)
+                for s in session_bulk:
+                    uid = s.get("user_id", "")
+                    if uid:
+                        sess_by_uid[uid] += s.get("duration_seconds", 0)
+
+                stats_result = {}
+                active_uids = set(res_by_uid.keys()) | set(sess_by_uid.keys())
+                for uid in active_uids:
+                    totals = res_by_uid[uid]
+                    ef = (
+                        round(totals["aciertos"] / totals["total"] * 100)
+                        if totals["total"] > 0 else 0
+                    )
+                    stats_result[uid] = {
+                        "efectividad": ef,
+                        "partidas": totals["partidas"],
+                        "tiempo_min": sess_by_uid[uid] // 60,
+                    }
+
+                stats_map_ref.clear()
+                stats_map_ref.update(stats_result)
+
             except Exception:
                 usuarios_data = []
 
@@ -87,7 +151,7 @@ def admin_usuarios_view(
 
     filter_state = {"rol": "user"}
     search_state = {"query": ""}
-    filter_refs = {}  # rol_key -> (container, text_widget)
+    filter_refs = {}
 
     def make_filter_chip(label, rol_key):
         active = filter_state["rol"] == rol_key
@@ -148,37 +212,10 @@ def admin_usuarios_view(
         on_change=_on_search_change,
     )
 
-    # ─── Construcción de la lista agrupada ────────────────────────────────────
-
-    def _section_header(sede_key: str | None, count: int) -> ft.Container:
-        label = sede_key if sede_key else "Sin sede asignada"
-        color = COLORES_SEDE.get(sede_key, ft.Colors.GREY_400)
-        return ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Container(width=3, height=20, bgcolor=color, border_radius=2),
-                    ft.Text(
-                        label, size=12, weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.GREY_300, expand=True,
-                    ),
-                    ft.Container(
-                        content=ft.Text(
-                            str(count), size=10,
-                            weight=ft.FontWeight.W_600,
-                            color=ft.Colors.WHITE,
-                        ),
-                        bgcolor=ft.Colors.with_opacity(0.30, color),
-                        border_radius=8,
-                        padding=ft.Padding.symmetric(horizontal=7, vertical=2),
-                    ),
-                ],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.Padding.only(left=12, right=12, top=14, bottom=6),
-        )
+    # ─── Card de usuario ──────────────────────────────────────────────────────
 
     def _user_card(u: dict) -> ft.GestureDetector:
+        uid = u.get("usuario_id", "")
         marcas = u.get("marcas_permitidas") or []
         chips = []
         for m in marcas[:3]:
@@ -196,15 +233,45 @@ def admin_usuarios_view(
         sede = u.get("sede") or ""
         sede_color = COLORES_SEDE.get(sede, ft.Colors.GREY_500)
         sede_text = ft.Text(
-            sede,
-            size=10,
+            sede, size=10,
             color=ft.Colors.with_opacity(0.6, sede_color),
             weight=ft.FontWeight.W_500,
         )
 
+        # ── Stats mini-row ────────────────────────────────────────────────────
+        user_stats = stats_map_ref.get(uid)
+        if user_stats is None:
+            stats_row = ft.Row(
+                controls=[
+                    ft.Text("Sin actividad", size=10,
+                            color=ft.Colors.GREY_600, italic=True),
+                ],
+                spacing=4,
+            )
+        else:
+            ef = user_stats["efectividad"]
+            ef_color = (
+                ft.Colors.GREEN_400 if ef >= 70
+                else ft.Colors.YELLOW_600 if ef >= 40
+                else ft.Colors.RED_400
+            )
+            stats_row = ft.Row(
+                controls=[
+                    ft.Text(f"{ef}% ef.", size=10, color=ef_color,
+                            weight=ft.FontWeight.W_500),
+                    ft.Text("·", size=10, color=ft.Colors.GREY_600),
+                    ft.Text(f"{user_stats['partidas']} partidas", size=10,
+                            color=ft.Colors.GREY_600),
+                    ft.Text("·", size=10, color=ft.Colors.GREY_600),
+                    ft.Text(f"{user_stats['tiempo_min']}min", size=10,
+                            color=ft.Colors.GREY_600),
+                ],
+                spacing=4,
+            )
+
         info_controls = [
             ft.Text(u.get("nombre", ""), size=13,
-                    weight=ft.FontWeight.W_600, no_wrap=True),
+                    weight=ft.FontWeight.W_600, no_wrap=True, color=text_color),
             ft.Text(u.get("email", ""), size=11,
                     color=ft.Colors.GREY_500, no_wrap=True),
         ]
@@ -212,6 +279,7 @@ def admin_usuarios_view(
             info_controls.append(ft.Row(controls=chips, spacing=4, wrap=True))
         else:
             info_controls.append(sede_text)
+        info_controls.append(stats_row)
 
         return ft.GestureDetector(
             content=ft.Container(
@@ -234,18 +302,22 @@ def admin_usuarios_view(
                             tight=True,
                         ),
                         ft.Icon(ft.Icons.CHEVRON_RIGHT_ROUNDED,
-                                color=ft.Colors.GREY_700, size=20),
+                                color=ft.Colors.GREY_500, size=20),
                     ],
                     spacing=12,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 padding=ft.Padding.symmetric(horizontal=12, vertical=10),
                 border=ft.Border(
-                    bottom=ft.BorderSide(0.5, ft.Colors.with_opacity(0.1, primary_color))
+                    bottom=ft.BorderSide(
+                        0.5, ft.Colors.with_opacity(0.1, primary_color)
+                    )
                 ),
             ),
             on_tap=lambda e, user=u: open_detail(user),
         )
+
+    # ─── Lista agrupada con ExpansionTile ─────────────────────────────────────
 
     def build_list():
         fil = filter_state["rol"]
@@ -270,7 +342,8 @@ def admin_usuarios_view(
             content_area.content = ft.Container(
                 content=ft.Column(
                     controls=[
-                        ft.Icon(ft.Icons.GROUP_OFF_ROUNDED, size=48, color=ft.Colors.GREY_700),
+                        ft.Icon(ft.Icons.GROUP_OFF_ROUNDED, size=48,
+                                color=ft.Colors.GREY_700),
                         ft.Text(msg, size=14, color=ft.Colors.GREY_500),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -287,16 +360,46 @@ def admin_usuarios_view(
             key = sede if sede in SEDES else None
             groups.setdefault(key, []).append(u)
 
-        rows = []
+        tiles = []
         for sede_key in _SEDES_ORDER:
             group = groups.get(sede_key)
             if not group:
                 continue
-            rows.append(_section_header(sede_key, len(group)))
-            for u in group:
-                rows.append(_user_card(u))
 
-        content_area.content = ft.ListView(controls=rows, expand=True, spacing=0)
+            label = sede_key if sede_key else "Sin sede asignada"
+            color = COLORES_SEDE.get(sede_key, ft.Colors.GREY_400)
+            sorted_group = sorted(group, key=lambda u: u.get("creado_en", ""))
+
+            tile = ft.ExpansionTile(
+                title=ft.Row(
+                    controls=[
+                        ft.Container(
+                            width=3, height=20,
+                            bgcolor=color, border_radius=2,
+                        ),
+                        ft.Text(label, size=12, weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.GREY_300, expand=True),
+                        ft.Container(
+                            content=ft.Text(
+                                str(len(group)), size=10,
+                                weight=ft.FontWeight.W_600,
+                                color=ft.Colors.WHITE,
+                            ),
+                            bgcolor=ft.Colors.with_opacity(0.30, color),
+                            border_radius=8,
+                            padding=ft.Padding.symmetric(horizontal=7, vertical=2),
+                        ),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                controls=[_user_card(u) for u in sorted_group],
+                expanded=False,
+                tile_padding=ft.Padding.symmetric(horizontal=12, vertical=4),
+            )
+            tiles.append(tile)
+
+        content_area.content = ft.ListView(controls=tiles, expand=True, spacing=0)
 
     # ─── Detalle de usuario ───────────────────────────────────────────────────
 
@@ -346,20 +449,21 @@ def admin_usuarios_view(
                 marcas_col.controls.clear()
 
                 for m in disponibles:
-                    # Only pre-check marks when loading the user's currently configured sede
                     checked = (m in actuales) if sede == user_sede else False
                     marcas_state[m] = checked
                     cb = ft.Checkbox(
                         label=m, value=checked, active_color=primary_color,
-                        on_change=lambda e, nombre=m: marcas_state.update({nombre: e.control.value}),
+                        on_change=lambda e, nombre=m: marcas_state.update(
+                            {nombre: e.control.value}
+                        ),
                     )
                     marcas_col.controls.append(cb)
 
                 if not disponibles:
                     marcas_col.controls.append(
-                        ft.Text("Sin marcas para esta sede", size=12, color=ft.Colors.GREY_500)
+                        ft.Text("Sin marcas para esta sede", size=12,
+                                color=ft.Colors.GREY_500)
                     )
-
                 page.update()
 
             page.run_thread(do_load)
@@ -378,7 +482,8 @@ def admin_usuarios_view(
         )
 
         save_btn = ft.Button(
-            content=ft.Text("Guardar", color=ft.Colors.WHITE, weight=ft.FontWeight.W_600),
+            content=ft.Text("Guardar", color=ft.Colors.WHITE,
+                            weight=ft.FontWeight.W_600),
             style=ft.ButtonStyle(
                 shape=ft.RoundedRectangleBorder(radius=12),
                 bgcolor=primary_color,
@@ -434,7 +539,8 @@ def admin_usuarios_view(
             content=ft.Row(
                 controls=[
                     ft.ProgressRing(width=18, height=18),
-                    ft.Text("Cargando estadísticas...", size=12, color=ft.Colors.GREY_500),
+                    ft.Text("Cargando estadísticas...", size=12,
+                            color=ft.Colors.GREY_500),
                 ],
                 spacing=8,
             ),
@@ -447,7 +553,6 @@ def admin_usuarios_view(
             def do_load():
                 try:
                     from auth import get_client
-                    from collections import defaultdict
                     client = get_client()
 
                     practica = (
@@ -474,25 +579,35 @@ def admin_usuarios_view(
 
                     total_aciertos = sum(r.get("aciertos", 0) for r in practica)
                     total_preguntas = sum(r.get("total_preguntas", 0) for r in practica)
-                    efectividad = round(total_aciertos / total_preguntas * 100) if total_preguntas else 0
+                    efectividad = (
+                        round(total_aciertos / total_preguntas * 100)
+                        if total_preguntas else 0
+                    )
                     partidas = len(practica)
-                    tiempo_min = sum(s.get("duration_seconds", 0) for s in session_logs) // 60
+                    tiempo_min = sum(
+                        s.get("duration_seconds", 0) for s in session_logs
+                    ) // 60
 
                     err_map = defaultdict(lambda: {"nombre": "", "total": 0})
                     for err in errores:
                         cod = err.get("elemento_codigo", "")
                         err_map[cod]["nombre"] = err.get("elemento_nombre", "")
                         err_map[cod]["total"] += err.get("veces_fallado", 1)
-                    top3 = sorted(err_map.items(), key=lambda x: x[1]["total"], reverse=True)[:3]
+                    top3 = sorted(
+                        err_map.items(),
+                        key=lambda x: x[1]["total"], reverse=True
+                    )[:3]
 
                     def stat_card(label, value):
                         return ft.Container(
                             content=ft.Column(
                                 controls=[
-                                    ft.Text(value, size=18, weight=ft.FontWeight.BOLD,
+                                    ft.Text(value, size=18,
+                                            weight=ft.FontWeight.BOLD,
                                             color=primary_color,
                                             text_align=ft.TextAlign.CENTER),
-                                    ft.Text(label, size=10, color=ft.Colors.GREY_500,
+                                    ft.Text(label, size=10,
+                                            color=ft.Colors.GREY_500,
                                             text_align=ft.TextAlign.CENTER,
                                             no_wrap=False),
                                 ],
@@ -509,11 +624,14 @@ def admin_usuarios_view(
                         ciegos_rows = [
                             ft.Row(
                                 controls=[
-                                    ft.Text(cod, size=11, weight=ft.FontWeight.W_600,
-                                            color=primary_color, font_family="monospace",
+                                    ft.Text(cod, size=11,
+                                            weight=ft.FontWeight.W_600,
+                                            color=primary_color,
+                                            font_family="monospace",
                                             width=70),
-                                    ft.Text(info["nombre"], size=11, expand=True,
-                                            no_wrap=True),
+                                    ft.Text(info["nombre"], size=11,
+                                            expand=True, no_wrap=True,
+                                            color=text_color),
                                     ft.Text(f"×{info['total']}", size=11,
                                             color=ft.Colors.RED_400, width=32,
                                             text_align=ft.TextAlign.RIGHT),
@@ -551,7 +669,8 @@ def admin_usuarios_view(
                                 spacing=8,
                             ),
                             ft.Container(height=8),
-                            ft.Text("Puntos Ciegos", size=12, color=ft.Colors.GREY_500,
+                            ft.Text("Puntos Ciegos", size=12,
+                                    color=ft.Colors.GREY_500,
                                     weight=ft.FontWeight.W_500),
                             ft.Container(height=4),
                             ft.Container(
@@ -581,7 +700,8 @@ def admin_usuarios_view(
                                 ft.Column(
                                     controls=[
                                         ft.Text(user.get("nombre", ""), size=15,
-                                                weight=ft.FontWeight.BOLD),
+                                                weight=ft.FontWeight.BOLD,
+                                                color=text_color),
                                         ft.Text(user.get("email", ""), size=12,
                                                 color=ft.Colors.GREY_500),
                                     ],
@@ -650,10 +770,12 @@ def admin_usuarios_view(
                             height=34,
                             fit="contain",
                             error_content=ft.Text(
-                                "Prisma", size=13, weight=ft.FontWeight.BOLD, color=primary_color
+                                "Prisma", size=13, weight=ft.FontWeight.BOLD,
+                                color=primary_color,
                             ),
                         ),
-                        ft.Text("Usuarios", size=16, weight=ft.FontWeight.BOLD, expand=True),
+                        ft.Text("Usuarios", size=16, weight=ft.FontWeight.BOLD,
+                                expand=True),
                         ft.IconButton(
                             icon=ft.Icons.REFRESH_ROUNDED,
                             icon_color=primary_color,

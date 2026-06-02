@@ -33,6 +33,10 @@ def panel_desafios_view(
 ):
     from session_manager import register_interaction
 
+    is_dark = page.theme_mode == ft.ThemeMode.DARK
+    text_color = ft.Colors.WHITE if is_dark else ft.Colors.BLACK
+    text_secondary = ft.Colors.GREY_400 if is_dark else ft.Colors.GREY_700
+
     def handle_interaction(e=None):
         register_interaction(time_offset)
         if on_interaction:
@@ -431,7 +435,7 @@ def panel_desafios_view(
         progress_bar = ft.ProgressBar(
             value=idx / total if total > 0 else 0,
             color=primary_color,
-            bgcolor=ft.Colors.GREY_200,
+            bgcolor=ft.Colors.with_opacity(0.2, primary_color),
             height=5,
         )
 
@@ -468,13 +472,13 @@ def panel_desafios_view(
             opt_txt = ft.Text(
                 opt, size=13, text_align=ft.TextAlign.CENTER,
                 weight=ft.FontWeight.W_500, no_wrap=False,
-                color=ft.Colors.GREY_800,
+                color=text_color,
             )
             c = ft.Container(
                 content=opt_txt,
-                bgcolor=ft.Colors.GREY_100,
+                bgcolor=ft.Colors.with_opacity(0.07, primary_color),
                 border_radius=30,
-                border=ft.Border.all(1, ft.Colors.GREY_300),
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.2, primary_color)),
                 padding=ft.Padding.symmetric(vertical=14, horizontal=16),
                 alignment=ft.Alignment(0, 0),
                 expand=True,
@@ -505,13 +509,13 @@ def panel_desafios_view(
                     game["aciertos"] += 1
                     aciertos_txt.value = str(game["aciertos"])
                     feedback.visible = True
-                    feedback.bgcolor = ft.Colors.GREEN_50
+                    feedback.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.GREEN_400)
                     feedback.padding = ft.Padding.all(12)
                     feedback.content = ft.Row(
                         controls=[
                             ft.Icon(ft.Icons.CHECK_CIRCLE_ROUNDED,
-                                    color=ft.Colors.GREEN_700, size=20),
-                            ft.Text("¡Correcto!", color=ft.Colors.GREEN_900,
+                                    color=ft.Colors.GREEN_400, size=20),
+                            ft.Text("¡Correcto!", color=ft.Colors.GREEN_400,
                                     size=14, weight=ft.FontWeight.W_500),
                         ],
                         spacing=8,
@@ -528,9 +532,9 @@ def panel_desafios_view(
                     hint_row = ft.Row(
                         controls=[
                             ft.Icon(ft.Icons.LIGHTBULB_OUTLINE,
-                                    size=14, color=ft.Colors.ORANGE_600),
+                                    size=14, color=ft.Colors.ORANGE_400),
                             ft.Text(mnem, size=12, italic=True,
-                                    color=ft.Colors.ORANGE_900, expand=True,
+                                    color=ft.Colors.ORANGE_400, expand=True,
                                     no_wrap=False),
                         ],
                         spacing=6,
@@ -538,15 +542,15 @@ def panel_desafios_view(
                     ) if show_hint else None
 
                     feedback.visible = True
-                    feedback.bgcolor = ft.Colors.ORANGE_50
+                    feedback.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.ORANGE_400)
                     feedback.padding = ft.Padding.all(12)
                     feedback.content = ft.Column(
                         controls=[
                             ft.Row(
                                 controls=[
                                     ft.Icon(ft.Icons.CANCEL_ROUNDED,
-                                            color=ft.Colors.RED_600, size=20),
-                                    ft.Text("Incorrecto", color=ft.Colors.RED_900,
+                                            color=ft.Colors.RED_400, size=20),
+                                    ft.Text("Incorrecto", color=ft.Colors.RED_400,
                                             size=14, weight=ft.FontWeight.W_500),
                                 ],
                                 spacing=8,
@@ -615,7 +619,7 @@ def panel_desafios_view(
                     ft.Text(
                         f"Pregunta {idx + 1} / {total}",
                         size=13, weight=ft.FontWeight.W_500,
-                        color=ft.Colors.GREY_700,
+                        color=text_secondary,
                     ),
                     ft.Container(expand=True),
                     ft.Icon(ft.Icons.CHECK_CIRCLE_ROUNDED,
@@ -771,7 +775,7 @@ def panel_desafios_view(
                         shadow=ft.BoxShadow(
                             blur_radius=3,
                             offset=ft.Offset(0, 1),
-                            color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK),
+                            color=ft.Colors.with_opacity(0.08, primary_color),
                         ),
                     )
                 )
@@ -782,15 +786,15 @@ def panel_desafios_view(
                     content=ft.Row(
                         controls=[
                             ft.Icon(ft.Icons.VERIFIED_ROUNDED,
-                                    color=ft.Colors.GREEN_600, size=20),
+                                    color=ft.Colors.GREEN_400, size=20),
                             ft.Text("¡Sin errores! Perfecto 🎉",
-                                    size=13, color=ft.Colors.GREEN_700,
+                                    size=13, color=ft.Colors.GREEN_400,
                                     weight=ft.FontWeight.W_500),
                         ],
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    bgcolor=ft.Colors.GREEN_50,
+                    bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.GREEN_400),
                     border_radius=10,
                     padding=ft.Padding.all(14),
                 )

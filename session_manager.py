@@ -19,6 +19,7 @@ def get_storage_path() -> Path:
 
 
 STORAGE_FILE = get_storage_path()
+STORAGE_DIR = STORAGE_FILE.parent
 
 
 def _get_corrected_time(time_offset: float) -> datetime:
@@ -258,3 +259,62 @@ def clear_productos_cache() -> None:
         print("[cache] productos_cache.json eliminado")
     except Exception as e:
         print(f"[cache] Error eliminando productos_cache: {e}")
+
+
+# ─── Caché admin por sede ─────────────────────────────────────────────────────
+
+def get_admin_cache_path(sede: str) -> Path:
+    sede_slug = sede.lower().replace(" ", "_").replace("de_", "")
+    return STORAGE_DIR / f"cache_admin_{sede_slug}.json"
+
+
+def save_admin_cache(sede: str, data: dict) -> None:
+    path = get_admin_cache_path(sede)
+    payload = {
+        "sede": sede,
+        "categorias": data["categorias"],
+        "subcategorias": data["subcategorias"],
+        "productos": data["productos"],
+    }
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        print(f"[cache_admin] {sede} guardado ({len(data['productos'])} productos)")
+    except Exception as e:
+        print(f"[cache_admin] Error guardando {sede}: {e}")
+
+
+def load_admin_cache(sede: str) -> dict | None:
+    path = get_admin_cache_path(sede)
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        print(f"[cache_admin] {sede} cargado ({len(data.get('productos', []))} productos)")
+        return data
+    except Exception as e:
+        print(f"[cache_admin] Error leyendo {sede}: {e}")
+        return None
+
+
+def clear_all_cache() -> None:
+    archivos = [
+        STORAGE_DIR / "productos_cache.json",
+        STORAGE_DIR / "session_data.json",
+        STORAGE_DIR / "app_preferences.json",
+    ]
+    for path in archivos:
+        try:
+            if path.exists():
+                path.unlink()
+                print(f"[cache] Borrado: {path.name}")
+        except Exception as e:
+            print(f"[cache] Error borrando {path.name}: {e}")
+
+    try:
+        for path in STORAGE_DIR.glob("cache_admin_*.json"):
+            path.unlink()
+            print(f"[cache] Borrado: {path.name}")
+    except Exception as e:
+        print(f"[cache] Error borrando caches admin: {e}")

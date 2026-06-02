@@ -1,23 +1,16 @@
 import flet as ft
 
-INFALTABLES = {"B", "D", "F"}
+SEDES_ORDEN = ["FEBECA", "SILLACA", "BEVAL", "COFERSA", "MUNDIAL DE PARTES"]
+_INFALTABLES = {"B", "D", "F"}
 
 
-def guia_estudio_view(
+def guia_global_view(
     page: ft.Page,
     time_offset: float,
     on_interaction,
     primary_color,
-    sede: str,
-    sede_logo: str,
-    categorias: list,
-    subcategorias: list,
-    productos: list,
-    marcas_permitidas: list,
-    user_id: str,
-    save_cache_callback,
 ):
-    from session_manager import register_interaction
+    from session_manager import register_interaction, save_admin_cache, load_admin_cache
     from views.filtros import get_elementos_visibles
 
     is_dark = page.theme_mode == ft.ThemeMode.DARK
@@ -28,19 +21,41 @@ def guia_estudio_view(
         if on_interaction:
             on_interaction()
 
-    # ─── Estado mutable ───────────────────────────────────────────────────────
+    content_area = ft.Container(expand=True)
 
     data = {
-        "categorias": list(categorias),
-        "subcategorias": list(subcategorias),
-        "productos": list(productos),
-        "marca": None,
+        "sede": "FEBECA",
+        "categorias": [],
+        "subcategorias": [],
+        "productos": [],
         "solo_infaltables": False,
         "cat_search": "",
         "sub_search": "",
     }
 
-    content_area = ft.Container(expand=True)
+    # ─── Paginación Supabase ──────────────────────────────────────────────────
+
+    def _fetch_all_admin(sede: str, tabla: str) -> list:
+        from auth import get_client
+        client = get_client()
+        PAGE_SIZE = 1000
+        all_data = []
+        offset = 0
+        while True:
+            result = (
+                client.table(tabla)
+                .select("*")
+                .eq("sede", sede)
+                .range(offset, offset + PAGE_SIZE - 1)
+                .execute()
+            )
+            if not result.data:
+                break
+            all_data.extend(result.data)
+            if len(result.data) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
+        return all_data
 
     # ─── Imagen en pantalla completa ──────────────────────────────────────────
 
@@ -60,10 +75,10 @@ def guia_estudio_view(
             page.overlay.remove(overlay)
         page.update()
 
-    # ─── Construcción del acordeón ────────────────────────────────────────────
+    # ─── Fila de producto ─────────────────────────────────────────────────────
 
     def product_row(prod):
-        is_infaltable = prod.get("estatus") in INFALTABLES
+        is_infaltable = prod.get("estatus") in _INFALTABLES
         img_url = prod.get("imagen_url")
         codigo = prod.get("codigo_completo") or (
             f"{prod.get('categoria_codigo','')}-"
@@ -83,10 +98,12 @@ def guia_estudio_view(
             ),
             ft.Column(
                 controls=[
-                    ft.Text(value=prod.get("nombre", ""), size=12, no_wrap=False),
+                    ft.Text(value=prod.get("nombre", ""), size=12,
+                            no_wrap=False, color=text_color),
                     *(
                         [ft.Text(value=mnem, size=10, italic=True,
-                                 color=ft.Colors.with_opacity(0.8, primary_color), no_wrap=False)]
+                                 color=ft.Colors.with_opacity(0.8, primary_color),
+                                 no_wrap=False)]
                         if mnem else []
                     ),
                 ],
@@ -119,6 +136,8 @@ def guia_estudio_view(
             ),
             on_click=handle_interaction,
         )
+
+    # ─── Tile de subcategoría ─────────────────────────────────────────────────
 
     def _build_sub_tile(sub, prods):
         sub_cod = sub.get("codigo", "")
@@ -200,8 +219,9 @@ def guia_estudio_view(
         if sub_mnemo:
             parts.append(sub_mnemo)
         parts.append(prod_col)
-
         return ft.Column(spacing=0, controls=parts)
+
+    # ─── Card de categoría ────────────────────────────────────────────────────
 
     def _build_cat_card(cat, sub_map, prod_map):
         cat_cod = cat.get("codigo", "")
@@ -233,9 +253,11 @@ def guia_estudio_view(
             handle_interaction()
             cat_expanded[0] = not cat_expanded[0]
             if cat_expanded[0] and not sub_col.controls:
-                subs = sorted(sub_map.get(cat_cod, []), key=lambda x: x.get("codigo", ""))
+                subs = sorted(sub_map.get(cat_cod, []),
+                              key=lambda x: x.get("codigo", ""))
                 sub_col.controls = [
-                    _build_sub_tile(s, prod_map.get((cat_cod, s.get("codigo", "")), []))
+                    _build_sub_tile(s, prod_map.get(
+                        (cat_cod, s.get("codigo", "")), []))
                     for s in subs
                 ] or [
                     ft.Container(
@@ -295,28 +317,32 @@ def guia_estudio_view(
             content=ft.Column(spacing=0, controls=parts),
         )
 
+    # ─── Acordeón ─────────────────────────────────────────────────────────────
+
     def build_accordion():
         cats_v, subs_v, prods_v = get_elementos_visibles(
             categorias=data["categorias"],
             subcategorias=data["subcategorias"],
             productos=data["productos"],
-            marca_filtro=data["marca"],
+            marca_filtro=None,
             solo_infaltables=data["solo_infaltables"],
             busqueda_cat=data["cat_search"],
             busqueda_sub=data["sub_search"],
         )
 
         if not cats_v:
+            msg = (
+                "No hay datos para esta sede. Pulsa ↻ para cargar."
+                if not data["categorias"]
+                else "No hay elementos que mostrar con los filtros activos."
+            )
             return ft.Container(
                 content=ft.Column(
                     controls=[
                         ft.Icon(ft.Icons.SEARCH_OFF_ROUNDED, size=48,
                                 color=ft.Colors.GREY_700),
-                        ft.Text(
-                            "No hay elementos que mostrar con los filtros activos.",
-                            size=13, color=ft.Colors.GREY_500,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
+                        ft.Text(msg, size=13, color=ft.Colors.GREY_500,
+                                text_align=ft.TextAlign.CENTER),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=12,
@@ -347,37 +373,65 @@ def guia_estudio_view(
             padding=ft.Padding.symmetric(horizontal=16, vertical=8),
         )
 
+    def usar_datos(cached: dict):
+        data["categorias"] = cached.get("categorias", [])
+        data["subcategorias"] = cached.get("subcategorias", [])
+        data["productos"] = cached.get("productos", [])
+        content_area.content = build_accordion()
+        page.update()
+
+    def cargar_sede(sede: str, forzar_refresh: bool = False):
+        if not forzar_refresh:
+            cached = load_admin_cache(sede)
+            if cached:
+                usar_datos(cached)
+                return
+
+        content_area.content = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.ProgressRing(),
+                    ft.Text("Cargando sede...", size=13, color=ft.Colors.GREY_500),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=12,
+            ),
+            alignment=ft.Alignment(0, 0),
+            expand=True,
+        )
+        page.update()
+
+        def do_load():
+            try:
+                cats = _fetch_all_admin(sede, "categorias")
+                subs = _fetch_all_admin(sede, "subcategorias")
+                prods = _fetch_all_admin(sede, "productos")
+                cache_data = {
+                    "sede": sede,
+                    "categorias": cats,
+                    "subcategorias": subs,
+                    "productos": prods,
+                }
+                save_admin_cache(sede, cache_data)
+                usar_datos(cache_data)
+            except Exception as ex:
+                print(f"[guia_global] Error cargando {sede}: {ex}")
+                content_area.content = ft.Container(
+                    content=ft.Text("Error al cargar datos",
+                                    color=ft.Colors.RED_400,
+                                    text_align=ft.TextAlign.CENTER),
+                    alignment=ft.Alignment(0, 0),
+                    expand=True,
+                )
+                page.update()
+
+        page.run_thread(do_load)
+
     def rebuild():
         content_area.content = build_accordion()
         page.update()
 
     # ─── Filtros ──────────────────────────────────────────────────────────────
-
-    all_marcas = sorted({p.get("marca") for p in data["productos"] if p.get("marca")})
-    show_dropdown = (
-        len(marcas_permitidas) > 1
-        or (len(marcas_permitidas) == 0 and len(all_marcas) > 1)
-    )
-
-    marca_dd = ft.Dropdown(
-        label="Marca",
-        value="",
-        options=[ft.dropdown.Option(key="", text="Todas las marcas")]
-        + [ft.dropdown.Option(key=m, text=m) for m in all_marcas],
-        border_radius=10,
-        border_color=ft.Colors.with_opacity(0.3, primary_color),
-        focused_border_color=primary_color,
-        expand=True,
-        visible=show_dropdown,
-        content_padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-    )
-
-    def on_marca_select(e):
-        handle_interaction()
-        data["marca"] = marca_dd.value or None
-        rebuild()
-
-    marca_dd.on_select = on_marca_select
 
     infaltables_sw = ft.Switch(
         label="Solo Infaltables",
@@ -391,8 +445,6 @@ def guia_estudio_view(
         rebuild()
 
     infaltables_sw.on_change = on_infaltables_change
-
-    # ─── Buscadores de texto ──────────────────────────────────────────────────
 
     cat_search_field = ft.TextField(
         hint_text="Buscar categoría...",
@@ -431,148 +483,43 @@ def guia_estudio_view(
     cat_search_field.on_change = on_cat_search
     sub_search_field.on_change = on_sub_search
 
-    def update_marca_dropdown():
-        new_marcas = sorted({p.get("marca") for p in data["productos"] if p.get("marca")})
-        should_show = (
-            len(marcas_permitidas) > 1
-            or (len(marcas_permitidas) == 0 and len(new_marcas) > 1)
-        )
-        marca_dd.options = (
-            [ft.dropdown.Option(key="", text="Todas las marcas")]
-            + [ft.dropdown.Option(key=m, text=m) for m in new_marcas]
-        )
-        marca_dd.visible = should_show
-        marca_dd.value = ""
-        data["marca"] = None
+    # ─── Dropdown de sede ─────────────────────────────────────────────────────
 
-    # ─── Card de taxonomía ────────────────────────────────────────────────────
+    sede_actual = ["FEBECA"]
 
-    cat_count_ref = ft.Text(
-        str(len(data["categorias"])),
-        size=12, weight=ft.FontWeight.BOLD, color=primary_color,
-    )
-    sub_count_ref = ft.Text(
-        str(len(data["subcategorias"])),
-        size=12, weight=ft.FontWeight.BOLD, color=primary_color,
-    )
-    prod_count_ref = ft.Text(
-        str(len(data["productos"])),
-        size=12, weight=ft.FontWeight.BOLD, color=primary_color,
-    )
-
-    def _update_taxonomy_counts():
-        cat_count_ref.value = str(len(data["categorias"]))
-        sub_count_ref.value = str(len(data["subcategorias"]))
-        prod_count_ref.value = str(len(data["productos"]))
-
-    taxonomy_card = ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Container(
-                    content=ft.Text(
-                        "XX-XX-XXX",
-                        size=12, color=ft.Colors.WHITE,
-                        weight=ft.FontWeight.BOLD, font_family="monospace",
-                    ),
-                    bgcolor=primary_color,
-                    border_radius=8,
-                    padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                ),
-                ft.Column(
-                    controls=[
-                        ft.Text(
-                            "Estructura del Código:",
-                            size=11, weight=ft.FontWeight.BOLD,
-                        ),
-                        ft.Row(
-                            controls=[
-                                ft.Text(" Cat  |  ", size=12, color=ft.Colors.GREY_600),
-                                ft.Text(" Sub  |  ", size=12, color=ft.Colors.GREY_600),
-                                ft.Text(" Prod", size=12, color=ft.Colors.GREY_600),
-                            ],
-                            spacing=0,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                    ],
-                    spacing=3,
-                    tight=True,
-                    expand=True,
-                ),
-            ],
-            spacing=12,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        bgcolor=ft.Colors.with_opacity(0.05, primary_color),
-        border=ft.Border(
-            left=ft.BorderSide(1, ft.Colors.with_opacity(0.3, primary_color)),
-            right=ft.BorderSide(1, ft.Colors.with_opacity(0.3, primary_color)),
-            top=ft.BorderSide(1, ft.Colors.with_opacity(0.3, primary_color)),
-            bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.3, primary_color)),
-        ),
+    sede_dd = ft.Dropdown(
+        label="Sede",
+        value="FEBECA",
+        options=[ft.dropdown.Option(key=s, text=s) for s in SEDES_ORDEN],
         border_radius=10,
-        padding=ft.Padding.all(12),
+        border_color=ft.Colors.with_opacity(0.3, primary_color),
+        focused_border_color=primary_color,
+        expand=True,
+        content_padding=ft.Padding.symmetric(horizontal=12, vertical=6),
     )
 
-    # ─── Refresh manual ───────────────────────────────────────────────────────
-
-    def do_refresh():
-        content_area.content = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.ProgressRing(),
-                    ft.Text("Actualizando...", size=13, color=ft.Colors.GREY_500),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=12,
-            ),
-            alignment=ft.Alignment(0, 0),
-            expand=True,
-        )
+    def handle_sede_change(e):
+        nueva_sede = sede_dd.value
+        print(f"[guia_global] Sede cambiada a: {nueva_sede}")
+        if not nueva_sede or nueva_sede == sede_actual[0]:
+            return
+        handle_interaction()
+        sede_actual[0] = nueva_sede
+        data["sede"] = nueva_sede
+        data["cat_search"] = ""
+        data["sub_search"] = ""
+        data["solo_infaltables"] = False
+        cat_search_field.value = ""
+        sub_search_field.value = ""
+        infaltables_sw.value = False
         page.update()
+        cargar_sede(nueva_sede)
 
-        try:
-            from auth import get_client
-            from session_manager import fetch_all
-            client = get_client()
-
-            cats = fetch_all(client, "categorias", lambda q: q.select("*").eq("sede", sede))
-            subs = fetch_all(client, "subcategorias", lambda q: q.select("*").eq("sede", sede))
-            mp = marcas_permitidas
-            prods = fetch_all(
-                client, "productos",
-                lambda q: q.select("*").eq("sede", sede).in_("marca", mp) if mp
-                else q.select("*").eq("sede", sede),
-            )
-
-            cfg_res = (
-                client.table("usuario_config")
-                .select("config_version")
-                .eq("usuario_id", user_id)
-                .execute()
-            )
-            remote_ver = cfg_res.data[0]["config_version"] if cfg_res.data else None
-
-            print(f"[guia] Refresh: cats={len(cats)}, subs={len(subs)}, prods={len(prods)}, ver={remote_ver}")
-
-            data["categorias"] = cats
-            data["subcategorias"] = subs
-            data["productos"] = prods
-
-            _update_taxonomy_counts()
-
-            if save_cache_callback:
-                save_cache_callback(cats, subs, prods, remote_ver)
-
-            update_marca_dropdown()
-
-        except Exception as ex:
-            print(f"[guia] Error en refresh: {ex}")
-
-        rebuild()
+    sede_dd.on_select = handle_sede_change
 
     def handle_refresh(e):
         handle_interaction()
-        page.run_thread(do_refresh)
+        cargar_sede(sede_actual[0], forzar_refresh=True)
 
     # ─── Header ───────────────────────────────────────────────────────────────
 
@@ -582,31 +529,31 @@ def guia_estudio_view(
                 ft.Row(
                     controls=[
                         ft.Image(
-                            src=sede_logo,
-                            width=80,
-                            height=40,
+                            src="assets/images/Prisma.png",
+                            height=34,
                             fit="contain",
                             error_content=ft.Text(
-                                sede, size=13, weight=ft.FontWeight.BOLD, color=primary_color
+                                "Prisma", size=13,
+                                weight=ft.FontWeight.BOLD,
+                                color=primary_color,
                             ),
                         ),
                         ft.Text(
-                            "Guía de Estudio",
+                            "Guía Global",
                             size=16, weight=ft.FontWeight.BOLD, expand=True,
                         ),
                         ft.IconButton(
                             icon=ft.Icons.REFRESH_ROUNDED,
                             icon_color=primary_color,
                             on_click=handle_refresh,
-                            tooltip="Actualizar desde servidor",
+                            tooltip="Recargar desde servidor",
                         ),
                     ],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=10,
                 ),
-                taxonomy_card,
                 ft.Row(
-                    controls=[marca_dd, infaltables_sw],
+                    controls=[sede_dd, infaltables_sw],
                     spacing=8,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
@@ -623,7 +570,7 @@ def guia_estudio_view(
 
     # ─── Init ─────────────────────────────────────────────────────────────────
 
-    content_area.content = build_accordion()
+    cargar_sede("FEBECA")
 
     return ft.Container(
         content=ft.Column(

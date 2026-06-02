@@ -35,7 +35,7 @@ LOGOS_SEDE = {
     "MUNDIAL DE PARTES": "assets/images/Mundial.png",
 }
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 
 
 class AppState:
@@ -183,7 +183,8 @@ def main(page: ft.Page):
         page.theme_mode = new_mode
         save_theme_preferences("sede_color", new_mode == ft.ThemeMode.DARK)
         page.update()
-        show_main_view(selected_index=2)
+        profile_index = 3 if state.rol == "admin" else 2
+        show_main_view(selected_index=profile_index)
 
     def end_session():
         state.clock_running = False
@@ -892,6 +893,14 @@ def main(page: ft.Page):
                         primary_color=state.primary_color,
                     )
                 elif index == 2:
+                    from views.guia_global import guia_global_view
+                    content_area.content = guia_global_view(
+                        page=page,
+                        time_offset=state.time_offset,
+                        on_interaction=on_interaction,
+                        primary_color=state.primary_color,
+                    )
+                elif index == 3:
                     from views.profile import profile_view
                     content_area.content = profile_view(
                         page=page,
@@ -990,6 +999,11 @@ def main(page: ft.Page):
                 icon=ft.Icons.ASSIGNMENT_OUTLINED,
                 selected_icon=ft.Icons.ASSIGNMENT_ROUNDED,
                 label="Reportes",
+            ),
+            ft.NavigationBarDestination(
+                icon=ft.Icons.MENU_BOOK_OUTLINED,
+                selected_icon=ft.Icons.MENU_BOOK_ROUNDED,
+                label="Guía Global",
             ),
             ft.NavigationBarDestination(
                 icon=ft.Icons.PERSON_OUTLINE_ROUNDED,

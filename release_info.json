@@ -1,11 +1,11 @@
 {
-  "title": "[CRITICAL] v2.0.0 - Actualizacion obligatoria",
+  "title": "[CRITICAL] v2.1.0 - Actualizacion obligatoria",
   "target": "all",
   "changelog": [
-    "Nueva vista de productos Infaltables en la guia de estudio",
-    "Colores y logotipos personalizados por sede",
-    "Descarga de APK mejorada con soporte de streams",
-    "Correccion de pantalla en blanco al iniciar la app en Android"
+    "Filtrado correcto sin categorias ni subcategorias vacias en la guia de estudio",
+    "Recuperacion de contrasena via codigo OTP directamente en la app",
+    "Modo oscuro: textos y fondos adaptados en todas las vistas",
+    "Cierre de sesion limpia toda la cache local del dispositivo"
   ],
   "description": ""
 }

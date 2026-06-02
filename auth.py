@@ -243,6 +243,8 @@ def logout(user_id: str, time_offset: float):
     finally:
         clear_auth_tokens()
         clear_local_session_data()
+        from session_manager import clear_all_cache
+        clear_all_cache()
 
 
 # ─── Consultas de perfil/config ───────────────────────────────────────────────
