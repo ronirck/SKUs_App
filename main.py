@@ -35,7 +35,7 @@ LOGOS_SEDE = {
     "MUNDIAL DE PARTES": "assets/images/Mundial.png",
 }
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 
 class AppState:
@@ -62,7 +62,7 @@ class AppState:
 
 def main(page: ft.Page):
     page.title = "SKUs App"
-    page.padding = 0
+    page.padding = ft.Padding.only(top=40)
     page.safe_area = True
 
     state = AppState()

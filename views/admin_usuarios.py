@@ -1,5 +1,6 @@
 import flet as ft
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 COLORES_SEDE = {
     "FEBECA": ft.Colors.BLUE_400,
@@ -21,7 +22,7 @@ def admin_usuarios_view(
     notif_count: int,
     on_notif_cleared,
 ):
-    from session_manager import register_interaction
+    from session_manager import register_interaction, fetch_all
 
     is_dark = page.theme_mode == ft.ThemeMode.DARK
     text_color = ft.Colors.WHITE if is_dark else ft.Colors.BLACK
@@ -89,22 +90,19 @@ def admin_usuarios_view(
                 session_bulk = []
                 if uids:
                     try:
-                        res = (
-                            client.table("resultados_codex")
-                            .select("usuario_id, aciertos, total_preguntas")
-                            .neq("tipo_juego", "contrarreloj")
-                            .execute()
+                        resultados_bulk = fetch_all(
+                            client, "resultados_codex",
+                            lambda q: q.select("usuario_id, aciertos, total_preguntas")
+                                       .in_("usuario_id", uids),
                         )
-                        resultados_bulk = res.data or []
                     except Exception:
                         pass
                     try:
-                        ses = (
-                            client.table("session_logs")
-                            .select("user_id, duration_seconds")
-                            .execute()
+                        session_bulk = fetch_all(
+                            client, "session_logs",
+                            lambda q: q.select("user_id, duration_seconds")
+                                       .in_("user_id", uids),
                         )
-                        session_bulk = ses.data or []
                     except Exception:
                         pass
 
@@ -190,6 +188,7 @@ def admin_usuarios_view(
             make_filter_chip("Todos", "all"),
             make_filter_chip("Usuarios", "user"),
             make_filter_chip("Admins", "admin"),
+            make_filter_chip("Nuevos", "new"),
         ],
         spacing=6,
     )
@@ -214,6 +213,16 @@ def admin_usuarios_view(
 
     # ─── Card de usuario ──────────────────────────────────────────────────────
 
+    def _is_new_user(u: dict) -> bool:
+        created = u.get("creado_en")
+        if not created:
+            return False
+        try:
+            ts = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            return ts >= datetime.now(timezone.utc) - timedelta(days=7)
+        except Exception:
+            return False
+
     def _user_card(u: dict) -> ft.GestureDetector:
         uid = u.get("usuario_id", "")
         marcas = u.get("marcas_permitidas") or []
@@ -232,11 +241,21 @@ def admin_usuarios_view(
 
         sede = u.get("sede") or ""
         sede_color = COLORES_SEDE.get(sede, ft.Colors.GREY_500)
+        COLORES_SEDE_CLARO = {
+            "FEBECA": ft.Colors.BLUE_700,
+            "COFERSA": ft.Colors.BLUE_700,
+            "SILLACA": ft.Colors.PINK_700,
+            "BEVAL": ft.Colors.GREEN_700,
+            "MUNDIAL DE PARTES": ft.Colors.GREEN_700,
+        }
+        sede_color_text = sede_color if is_dark else COLORES_SEDE_CLARO.get(sede, ft.Colors.GREY_700)
         sede_text = ft.Text(
             sede, size=10,
-            color=ft.Colors.with_opacity(0.6, sede_color),
+            color=sede_color_text,
             weight=ft.FontWeight.W_500,
         )
+
+        is_new = _is_new_user(u)
 
         # ── Stats mini-row ────────────────────────────────────────────────────
         user_stats = stats_map_ref.get(uid)
@@ -269,9 +288,27 @@ def admin_usuarios_view(
                 spacing=4,
             )
 
-        info_controls = [
+        name_row_controls = [
             ft.Text(u.get("nombre", ""), size=13,
                     weight=ft.FontWeight.W_600, no_wrap=True, color=text_color),
+        ]
+        if is_new:
+            name_row_controls.append(
+                ft.Container(
+                    content=ft.Text("Nuevo", size=9, color=ft.Colors.WHITE,
+                                    weight=ft.FontWeight.W_600),
+                    bgcolor=primary_color,
+                    border_radius=8,
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                )
+            )
+
+        info_controls = [
+            ft.Row(
+                controls=name_row_controls,
+                spacing=6,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             ft.Text(u.get("email", ""), size=11,
                     color=ft.Colors.GREY_500, no_wrap=True),
         ]
@@ -323,10 +360,14 @@ def admin_usuarios_view(
         fil = filter_state["rol"]
         query = search_state["query"]
 
-        after_rol = (
-            usuarios_data if fil == "all"
-            else [u for u in usuarios_data if u.get("rol", "user") == fil]
-        )
+        if fil == "new":
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            after_rol = [u for u in usuarios_data if _is_new_user(u)]
+        else:
+            after_rol = (
+                usuarios_data if fil == "all"
+                else [u for u in usuarios_data if u.get("rol", "user") == fil]
+            )
 
         if query:
             visible = [
@@ -378,7 +419,7 @@ def admin_usuarios_view(
                             bgcolor=color, border_radius=2,
                         ),
                         ft.Text(label, size=12, weight=ft.FontWeight.BOLD,
-                                color=ft.Colors.GREY_300, expand=True),
+                                color=ft.Colors.GREY_300 if is_dark else ft.Colors.GREY_800, expand=True),
                         ft.Container(
                             content=ft.Text(
                                 str(len(group)), size=10,
@@ -547,6 +588,60 @@ def admin_usuarios_view(
             padding=ft.Padding.only(top=4),
         )
 
+        uid = user.get("usuario_id", "")
+        cached = stats_map_ref.get(uid)
+        if cached:
+            def _quick_card(label, value, subtitle=None):
+                sub = (
+                    [ft.Text(subtitle, size=9, color=ft.Colors.GREY_600,
+                             text_align=ft.TextAlign.CENTER, no_wrap=False)]
+                    if subtitle else []
+                )
+                return ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Text(value, size=18, weight=ft.FontWeight.BOLD,
+                                    color=primary_color,
+                                    text_align=ft.TextAlign.CENTER),
+                            ft.Text(label, size=10, color=ft.Colors.GREY_500,
+                                    text_align=ft.TextAlign.CENTER, no_wrap=False),
+                            *sub,
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=2,
+                    ),
+                    bgcolor=ft.Colors.with_opacity(0.06, primary_color),
+                    border_radius=10,
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=10),
+                    expand=True,
+                )
+            stats_container.content = ft.Column(
+                controls=[
+                    ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.BAR_CHART_ROUNDED,
+                                    size=16, color=primary_color),
+                            ft.Text("Estadísticas", size=13,
+                                    weight=ft.FontWeight.W_600,
+                                    color=primary_color),
+                        ],
+                        spacing=6,
+                    ),
+                    ft.Container(height=6),
+                    ft.Row(
+                        controls=[
+                            _quick_card("Aciertos", f"{cached['efectividad']}%",
+                                        subtitle="% de respuestas correctas"),
+                            _quick_card("Partidas", str(cached["partidas"])),
+                            _quick_card("Tiempo (min)", str(cached["tiempo_min"])),
+                        ],
+                        spacing=8,
+                    ),
+                ],
+                spacing=0,
+                tight=True,
+            )
+
         def load_user_stats():
             uid = user.get("usuario_id", "")
 
@@ -555,50 +650,72 @@ def admin_usuarios_view(
                     from auth import get_client
                     client = get_client()
 
-                    practica = (
+                    print(f"[STATS] Consultando resultados_codex para uid={uid}")
+                    resultados = (
                         client.table("resultados_codex")
                         .select("aciertos, total_preguntas")
                         .eq("usuario_id", uid)
-                        .neq("tipo_juego", "contrarreloj")
+                        .range(0, 9999)
                         .execute()
                     ).data or []
+                    print(f"[STATS] resultados_codex → {len(resultados)} filas: {resultados}")
 
+                    print(f"[STATS] Consultando session_logs para uid={uid}")
                     session_logs = (
                         client.table("session_logs")
                         .select("duration_seconds")
                         .eq("user_id", uid)
+                        .range(0, 9999)
                         .execute()
                     ).data or []
+                    print(f"[STATS] session_logs → {len(session_logs)} filas: {session_logs}")
 
+                    print(f"[STATS] Consultando errores_partida para uid={uid}")
                     errores = (
                         client.table("errores_partida")
                         .select("elemento_codigo, elemento_nombre, veces_fallado")
                         .eq("usuario_id", uid)
+                        .range(0, 9999)
                         .execute()
                     ).data or []
+                    print(f"[STATS] errores_partida → {len(errores)} filas: {errores}")
 
-                    total_aciertos = sum(r.get("aciertos", 0) for r in practica)
-                    total_preguntas = sum(r.get("total_preguntas", 0) for r in practica)
+                    total_aciertos = sum(r.get("aciertos", 0) for r in resultados)
+                    total_preguntas = sum(r.get("total_preguntas", 0) for r in resultados)
                     efectividad = (
                         round(total_aciertos / total_preguntas * 100)
                         if total_preguntas else 0
                     )
-                    partidas = len(practica)
+                    partidas = len(resultados)
                     tiempo_min = sum(
                         s.get("duration_seconds", 0) for s in session_logs
                     ) // 60
+                    print(f"[STATS] RESULTADO FINAL uid={uid} → efectividad={efectividad}% partidas={partidas} tiempo={tiempo_min}min")
 
                     err_map = defaultdict(lambda: {"nombre": "", "total": 0})
                     for err in errores:
                         cod = err.get("elemento_codigo", "")
                         err_map[cod]["nombre"] = err.get("elemento_nombre", "")
                         err_map[cod]["total"] += err.get("veces_fallado", 1)
-                    top3 = sorted(
+                    top5 = sorted(
                         err_map.items(),
                         key=lambda x: x[1]["total"], reverse=True
-                    )[:3]
+                    )[:5]
 
-                    def stat_card(label, value):
+                    def stat_card(label, value, subtitle=None):
+                        label_controls = [
+                            ft.Text(label, size=10,
+                                    color=ft.Colors.GREY_500,
+                                    text_align=ft.TextAlign.CENTER,
+                                    no_wrap=False),
+                        ]
+                        if subtitle:
+                            label_controls.append(
+                                ft.Text(subtitle, size=9,
+                                        color=ft.Colors.GREY_600,
+                                        text_align=ft.TextAlign.CENTER,
+                                        no_wrap=False),
+                            )
                         return ft.Container(
                             content=ft.Column(
                                 controls=[
@@ -606,10 +723,7 @@ def admin_usuarios_view(
                                             weight=ft.FontWeight.BOLD,
                                             color=primary_color,
                                             text_align=ft.TextAlign.CENTER),
-                                    ft.Text(label, size=10,
-                                            color=ft.Colors.GREY_500,
-                                            text_align=ft.TextAlign.CENTER,
-                                            no_wrap=False),
+                                    *label_controls,
                                 ],
                                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                 spacing=2,
@@ -620,7 +734,7 @@ def admin_usuarios_view(
                             expand=True,
                         )
 
-                    if top3:
+                    if top5:
                         ciegos_rows = [
                             ft.Row(
                                 controls=[
@@ -638,7 +752,7 @@ def admin_usuarios_view(
                                 ],
                                 spacing=8,
                             )
-                            for cod, info in top3
+                            for cod, info in top5
                         ]
                         ciegos_widget = ft.Column(controls=ciegos_rows, spacing=6)
                     else:
@@ -662,7 +776,8 @@ def admin_usuarios_view(
                             ft.Container(height=6),
                             ft.Row(
                                 controls=[
-                                    stat_card("Efectividad", f"{efectividad}%"),
+                                    stat_card("Aciertos", f"{efectividad}%",
+                                              subtitle="% de respuestas correctas"),
                                     stat_card("Partidas", str(partidas)),
                                     stat_card("Tiempo (min)", str(tiempo_min)),
                                 ],
@@ -691,6 +806,22 @@ def admin_usuarios_view(
 
             page.run_thread(do_load)
 
+        bs_ref = {"sheet": None}
+
+        def handle_close(e):
+            sheet = bs_ref["sheet"]
+            if sheet:
+                sheet.open = False
+                if sheet in page.overlay:
+                    page.overlay.remove(sheet)
+                page.update()
+
+        close_icon_btn = ft.IconButton(
+            icon=ft.Icons.CLOSE_ROUNDED,
+            icon_color=ft.Colors.GREY_500,
+            on_click=handle_close,
+        )
+
         bs = ft.BottomSheet(
             content=ft.Container(
                 content=ft.Column(
@@ -707,15 +838,14 @@ def admin_usuarios_view(
                                     ],
                                     spacing=2, expand=True, tight=True,
                                 ),
-                                ft.IconButton(
-                                    icon=ft.Icons.CLOSE_ROUNDED,
-                                    icon_color=ft.Colors.GREY_500,
-                                    on_click=lambda e: _close(bs),
-                                ),
+                                close_icon_btn,
                             ],
                             spacing=8,
                             vertical_alignment=ft.CrossAxisAlignment.START,
                         ),
+                        ft.Divider(height=1),
+                        ft.Container(height=4),
+                        stats_container,
                         ft.Divider(height=1),
                         ft.Container(height=4),
                         sede_dd,
@@ -734,9 +864,6 @@ def admin_usuarios_view(
                         ft.Container(height=8),
                         status_text,
                         save_btn,
-                        ft.Divider(height=1),
-                        ft.Container(height=8),
-                        stats_container,
                         ft.Container(height=16),
                     ],
                     scroll=ft.ScrollMode.AUTO,
@@ -746,6 +873,8 @@ def admin_usuarios_view(
             ),
             open=True,
         )
+
+        bs_ref["sheet"] = bs
 
         load_marcas(sede_state["value"])
         load_user_stats()

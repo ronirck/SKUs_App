@@ -1,11 +1,16 @@
 {
-  "title": "[CRITICAL] v2.1.0 - Actualizacion obligatoria",
-  "target": "all",
+  "title": "[CRITICAL] v2.2.0 - Actualizacion obligatoria para administradores",
+  "target": "admin",
   "changelog": [
-    "Filtrado correcto sin categorias ni subcategorias vacias en la guia de estudio",
-    "Recuperacion de contrasena via codigo OTP directamente en la app",
-    "Modo oscuro: textos y fondos adaptados en todas las vistas",
-    "Cierre de sesion limpia toda la cache local del dispositivo"
+    "Panel de usuarios: estadisticas corregidas (antes siempre mostraban 0)",
+    "Panel de usuarios: estadisticas aparecen primero, configuracion abajo",
+    "Panel de usuarios: indicador 'Nuevo' en usuarios registrados hace menos de 7 dias",
+    "Panel de usuarios: filtro 'Nuevos' para ver solo registros recientes",
+    "Panel de usuarios: boton X del modal de detalle ahora cierra correctamente",
+    "Panel de usuarios: colores de sede legibles en modo claro",
+    "Panel de usuarios: 'Efectividad' renombrado a 'Aciertos' con descripcion",
+    "Panel de usuarios: top 5 puntos ciegos por usuario (antes top 3)",
+    "Perfil: etiqueta de rol oculta para usuarios no administradores"
   ],
   "description": ""
 }

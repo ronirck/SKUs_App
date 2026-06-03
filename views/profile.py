@@ -434,14 +434,18 @@ def profile_view(
                         controls=[
                             ft.Text(username, size=15, weight=ft.FontWeight.BOLD),
                             ft.Text(user_email, size=11, color=ft.Colors.GREY_500),
-                            ft.Container(
-                                content=ft.Text(
-                                    "Administrador" if rol == "admin" else "Usuario",
-                                    size=10, color=primary_color, weight=ft.FontWeight.W_600,
-                                ),
-                                bgcolor=ft.Colors.with_opacity(0.12, primary_color),
-                                border_radius=8,
-                                padding=ft.Padding.symmetric(horizontal=8, vertical=3),
+                            *(
+                                [ft.Container(
+                                    content=ft.Text(
+                                        "Administrador",
+                                        size=10, color=primary_color,
+                                        weight=ft.FontWeight.W_600,
+                                    ),
+                                    bgcolor=ft.Colors.with_opacity(0.12, primary_color),
+                                    border_radius=8,
+                                    padding=ft.Padding.symmetric(horizontal=8, vertical=3),
+                                )]
+                                if rol == "admin" else []
                             ),
                         ],
                         spacing=3,
