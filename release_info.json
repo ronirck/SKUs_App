@@ -1,6 +1,6 @@
 {
-  "title": "[CRITICAL] v2.2.0 - Actualizacion obligatoria para administradores",
-  "target": "admin",
+  "title": "[CRITICAL] v2.2.1 - Actualizacion obligatoria",
+  "target": "all",
   "changelog": [
     "Panel de usuarios: estadisticas corregidas (antes siempre mostraban 0)",
     "Panel de usuarios: estadisticas aparecen primero, configuracion abajo",

@@ -35,7 +35,7 @@ LOGOS_SEDE = {
     "MUNDIAL DE PARTES": "assets/images/Mundial.png",
 }
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.2.1"
 
 
 class AppState:
@@ -58,6 +58,7 @@ class AppState:
         self.productos_cache: list = []
         self.notif_count: int = 0
         self.update_checked: bool = False
+        self.update_info: dict = None
 
 
 def main(page: ft.Page):
@@ -365,6 +366,7 @@ def main(page: ft.Page):
         start_interval(time_offset)
         start_clock()
         show_main_view()
+        show_update_if_needed()
 
     # ─── Vista de autenticación ───────────────────────────────────────────────
 
@@ -1012,6 +1014,133 @@ def main(page: ft.Page):
             ),
         ]
 
+    # ─── Notificación de actualización ───────────────────────────────────────
+
+    def show_update_if_needed():
+        update_info = state.update_info
+        if not update_info:
+            return
+
+        target = update_info.get("target", "all")
+        if target != "all" and target != state.rol:
+            return
+
+        latest = update_info["latest_version"]
+        is_critical = update_info["is_critical"]
+        apk_url = update_info["apk_url"] or ""
+        changelog = update_info["changelog"]
+
+        async def copy_link():
+            await ft.Clipboard().set(apk_url)
+            page.show_dialog(
+                ft.SnackBar(content=ft.Text("¡Enlace copiado! Pégalo en tu navegador."), open=True)
+            )
+
+        def on_copy(e):
+            page.run_task(copy_link)
+
+        changelog_items = [
+            ft.Text(f"• {item}", size=13, color=ft.Colors.GREY_400)
+            for item in changelog
+        ] if changelog else []
+
+        if is_critical:
+            dlg = ft.AlertDialog(
+                modal=True,
+                bgcolor=ft.Colors.with_opacity(0.97, ft.Colors.GREY_800),
+                title=ft.Row(
+                    controls=[
+                        ft.Container(
+                            content=ft.Icon(ft.Icons.SYSTEM_UPDATE_ROUNDED, color=ft.Colors.WHITE, size=20),
+                            bgcolor=ft.Colors.BLUE_400, border_radius=10, padding=8,
+                        ),
+                        ft.Text("Actualización requerida", weight=ft.FontWeight.BOLD, size=16),
+                    ],
+                    spacing=10,
+                ),
+                content=ft.Column(
+                    controls=[
+                        ft.Divider(height=1, color=ft.Colors.with_opacity(0.15, ft.Colors.BLUE_400)),
+                        ft.Container(height=4),
+                        ft.Text(
+                            f"Esta versión ({APP_VERSION}) ya no es compatible.\n"
+                            f"Descarga la versión {latest} para continuar.",
+                            size=13, color=ft.Colors.GREY_400,
+                        ),
+                    ] + changelog_items,
+                    tight=True, spacing=4,
+                ),
+                actions=[
+                    ft.Button(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.CONTENT_COPY_ROUNDED, size=15, color=ft.Colors.WHITE),
+                                ft.Text("Copiar enlace", color=ft.Colors.WHITE, size=13),
+                            ],
+                            spacing=6, tight=True,
+                        ),
+                        on_click=on_copy,
+                        style=ft.ButtonStyle(
+                            shape=ft.RoundedRectangleBorder(radius=10),
+                            bgcolor=ft.Colors.BLUE_400,
+                        ),
+                    ),
+                ],
+                actions_alignment=ft.MainAxisAlignment.CENTER,
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
+        else:
+            changelog_text = "  •  ".join(changelog) if changelog else ""
+
+            def close_banner(e):
+                banner.open = False
+                page.update()
+
+            banner = ft.Banner(
+                bgcolor=ft.Colors.with_opacity(0.97, ft.Colors.GREY_900),
+                leading=ft.Container(
+                    content=ft.Icon(ft.Icons.SYSTEM_UPDATE_ROUNDED, color=ft.Colors.WHITE, size=20),
+                    bgcolor=ft.Colors.BLUE_400, border_radius=8, padding=8,
+                ),
+                content=ft.Column(
+                    controls=[
+                        ft.Text(f"Nueva versión {latest} disponible", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text(changelog_text, size=12, color=ft.Colors.GREY_500, visible=bool(changelog_text)),
+                    ],
+                    spacing=2, tight=True,
+                ),
+                actions=[
+                    ft.Button(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.CONTENT_COPY_ROUNDED, size=14, color=ft.Colors.BLUE_400),
+                                ft.Text("Copiar", color=ft.Colors.BLUE_400, size=13),
+                            ],
+                            spacing=4, tight=True,
+                        ),
+                        on_click=on_copy,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TRANSPARENT,
+                            shadow_color=ft.Colors.TRANSPARENT,
+                            overlay_color=ft.Colors.TRANSPARENT,
+                        ),
+                    ),
+                    ft.Button(
+                        content=ft.Text("Ignorar", color=ft.Colors.GREY_500, size=13),
+                        on_click=close_banner,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TRANSPARENT,
+                            shadow_color=ft.Colors.TRANSPARENT,
+                            overlay_color=ft.Colors.TRANSPARENT,
+                        ),
+                    ),
+                ],
+            )
+            banner.open = True
+            page.show_dialog(banner)
+
     # ─── Arranque de la app ───────────────────────────────────────────────────
 
     def initialize():
@@ -1033,127 +1162,8 @@ def main(page: ft.Page):
                 _finish_init()
                 return
 
-            target = update_info.get("target", "all")
-            if target != "all" and target != state.rol:
-                _finish_init()
-                return
-
-            latest = update_info["latest_version"]
-            is_critical = update_info["is_critical"]
-            apk_url = update_info["apk_url"] or ""
-            changelog = update_info["changelog"]
-
-            async def copy_link():
-                await ft.Clipboard().set(apk_url)
-                page.show_dialog(
-                    ft.SnackBar(content=ft.Text("¡Enlace copiado! Pégalo en tu navegador."), open=True)
-                )
-
-            def on_copy(e):
-                page.run_task(copy_link)
-
-            changelog_items = [
-                ft.Text(f"• {item}", size=13, color=ft.Colors.GREY_400)
-                for item in changelog
-            ] if changelog else []
-
-            if is_critical:
-                dlg = ft.AlertDialog(
-                    modal=True,
-                    bgcolor=ft.Colors.with_opacity(0.97, ft.Colors.GREY_800),
-                    title=ft.Row(
-                        controls=[
-                            ft.Container(
-                                content=ft.Icon(ft.Icons.SYSTEM_UPDATE_ROUNDED, color=ft.Colors.WHITE, size=20),
-                                bgcolor=ft.Colors.BLUE_400, border_radius=10, padding=8,
-                            ),
-                            ft.Text("Actualización requerida", weight=ft.FontWeight.BOLD, size=16),
-                        ],
-                        spacing=10,
-                    ),
-                    content=ft.Column(
-                        controls=[
-                            ft.Divider(height=1, color=ft.Colors.with_opacity(0.15, ft.Colors.BLUE_400)),
-                            ft.Container(height=4),
-                            ft.Text(
-                                f"Esta versión ({APP_VERSION}) ya no es compatible.\n"
-                                f"Descarga la versión {latest} para continuar.",
-                                size=13, color=ft.Colors.GREY_400,
-                            ),
-                        ] + changelog_items,
-                        tight=True, spacing=4,
-                    ),
-                    actions=[
-                        ft.Button(
-                            content=ft.Row(
-                                controls=[
-                                    ft.Icon(ft.Icons.CONTENT_COPY_ROUNDED, size=15, color=ft.Colors.WHITE),
-                                    ft.Text("Copiar enlace", color=ft.Colors.WHITE, size=13),
-                                ],
-                                spacing=6, tight=True,
-                            ),
-                            on_click=on_copy,
-                            style=ft.ButtonStyle(
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                                bgcolor=ft.Colors.BLUE_400,
-                            ),
-                        ),
-                    ],
-                    actions_alignment=ft.MainAxisAlignment.CENTER,
-                )
-                page.overlay.append(dlg)
-                dlg.open = True
-                page.update()
-            else:
-                changelog_text = "  •  ".join(changelog) if changelog else ""
-
-                def close_banner(e):
-                    banner.open = False
-                    page.update()
-
-                banner = ft.Banner(
-                    bgcolor=ft.Colors.with_opacity(0.97, ft.Colors.GREY_900),
-                    leading=ft.Container(
-                        content=ft.Icon(ft.Icons.SYSTEM_UPDATE_ROUNDED, color=ft.Colors.WHITE, size=20),
-                        bgcolor=ft.Colors.BLUE_400, border_radius=8, padding=8,
-                    ),
-                    content=ft.Column(
-                        controls=[
-                            ft.Text(f"Nueva versión {latest} disponible", size=13, weight=ft.FontWeight.W_500),
-                            ft.Text(changelog_text, size=12, color=ft.Colors.GREY_500, visible=bool(changelog_text)),
-                        ],
-                        spacing=2, tight=True,
-                    ),
-                    actions=[
-                        ft.Button(
-                            content=ft.Row(
-                                controls=[
-                                    ft.Icon(ft.Icons.CONTENT_COPY_ROUNDED, size=14, color=ft.Colors.BLUE_400),
-                                    ft.Text("Copiar", color=ft.Colors.BLUE_400, size=13),
-                                ],
-                                spacing=4, tight=True,
-                            ),
-                            on_click=on_copy,
-                            style=ft.ButtonStyle(
-                                bgcolor=ft.Colors.TRANSPARENT,
-                                shadow_color=ft.Colors.TRANSPARENT,
-                                overlay_color=ft.Colors.TRANSPARENT,
-                            ),
-                        ),
-                        ft.Button(
-                            content=ft.Text("Ignorar", color=ft.Colors.GREY_500, size=13),
-                            on_click=close_banner,
-                            style=ft.ButtonStyle(
-                                bgcolor=ft.Colors.TRANSPARENT,
-                                shadow_color=ft.Colors.TRANSPARENT,
-                                overlay_color=ft.Colors.TRANSPARENT,
-                            ),
-                        ),
-                    ],
-                )
-                banner.open = True
-                _finish_init()
-                page.show_dialog(banner)
+            state.update_info = update_info
+            _finish_init()
 
         def _finish_init():
             result = restore_session()
