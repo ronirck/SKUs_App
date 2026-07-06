@@ -1,16 +1,8 @@
 {
-  "title": "[CRITICAL] v2.2.1 - Actualizacion obligatoria",
+  "title": "[CRITICAL] Versión 1.1.1 — Nuevo ícono de la app",
   "target": "all",
   "changelog": [
-    "Panel de usuarios: estadisticas corregidas (antes siempre mostraban 0)",
-    "Panel de usuarios: estadisticas aparecen primero, configuracion abajo",
-    "Panel de usuarios: indicador 'Nuevo' en usuarios registrados hace menos de 7 dias",
-    "Panel de usuarios: filtro 'Nuevos' para ver solo registros recientes",
-    "Panel de usuarios: boton X del modal de detalle ahora cierra correctamente",
-    "Panel de usuarios: colores de sede legibles en modo claro",
-    "Panel de usuarios: 'Efectividad' renombrado a 'Aciertos' con descripcion",
-    "Panel de usuarios: top 5 puntos ciegos por usuario (antes top 3)",
-    "Perfil: etiqueta de rol oculta para usuarios no administradores"
+    "Nuevo logo e ícono de la aplicación"
   ],
-  "description": ""
+  "description": "Actualización del ícono de la app con el nuevo diseño de logo."
 }
