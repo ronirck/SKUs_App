@@ -18,8 +18,14 @@ Formato de release_info.json:
   "title": "titulo del release",
   "target": "all",       <- "all", "admin" o "user"
   "changelog": ["cambio 1", "cambio 2"],
+  "changelog_user": ["..."],   <- opcional: mensaje que ve el rol user
+  "changelog_admin": ["..."],  <- opcional: mensaje que ve el rol admin
   "description": ""
 }
+
+Los bloques changelog_user/changelog_admin solo los entienden las apps con
+version >= 1.3.0 (extract_changelog con soporte de rol); las versiones
+anteriores siempre muestran el bloque generico "changelog".
 
 Uso:
     python release.py
@@ -130,6 +136,11 @@ def load_release_info(project_path: Path) -> dict | None:
         if data["target"] not in ("all", "admin", "user"):
             warn(f"release_info.json: target '{data['target']}' no es valido. Usando 'all'.")
             data["target"] = "all"
+        # changelogs por rol opcionales — deben ser listas si estan presentes
+        for role_key in ("changelog_user", "changelog_admin"):
+            if role_key in data and not isinstance(data[role_key], list):
+                warn(f"release_info.json: '{role_key}' debe ser una lista. Se ignorara.")
+                del data[role_key]
         return data
     except Exception as e:
         warn(f"No se pudo leer release_info.json: {e}")
@@ -276,7 +287,13 @@ def check_tag_exists(repo: str, token: str, tag: str) -> bool:
 
 # ─── Construccion del body del release ───────────────────────────────────────
 
-def build_release_body(changelog_items: list, description: str, target: str) -> str:
+def build_release_body(
+    changelog_items: list,
+    description: str,
+    target: str,
+    changelog_user: list = None,
+    changelog_admin: list = None,
+) -> str:
     """
     El changelog visible en GitHub se escribe en Markdown normal.
     Los bloques entre marcadores HTML son extraidos por la app (ver
@@ -288,6 +305,10 @@ def build_release_body(changelog_items: list, description: str, target: str) -> 
       all   = todos los usuarios
       admin = solo administradores
       user  = solo usuarios regulares
+
+    changelog_user/changelog_admin generan bloques APP_CHANGELOG_USER /
+    APP_CHANGELOG_ADMIN que las apps >= 1.3.0 muestran segun el rol del
+    usuario; las versiones anteriores solo leen el bloque generico.
     """
     lines = []
 
@@ -311,6 +332,15 @@ def build_release_body(changelog_items: list, description: str, target: str) -> 
     for item in changelog_items:
         lines.append(f"- {item.strip()}")
     lines.append("<!-- APP_CHANGELOG_END -->")
+
+    for role, items in (("USER", changelog_user), ("ADMIN", changelog_admin)):
+        if not items:
+            continue
+        lines.append("")
+        lines.append(f"<!-- APP_CHANGELOG_{role}_START -->")
+        for item in items:
+            lines.append(f"- {item.strip()}")
+        lines.append(f"<!-- APP_CHANGELOG_{role}_END -->")
 
     return "\n".join(lines)
 
@@ -441,6 +471,8 @@ def main():
         changelog_items = release_info["changelog"]
         description     = release_info.get("description", "")
         target          = release_info.get("target", "all")
+        changelog_user  = release_info.get("changelog_user")
+        changelog_admin = release_info.get("changelog_admin")
     else:
         info("No se encontro release_info.json — ingresa los datos manualmente.")
         print(f"\n  {GREY}Para marcar como critico incluye [CRITICAL] en el titulo.{RESET}")
@@ -456,6 +488,8 @@ def main():
         description = ask("Descripcion", required=False)
 
         target = ask_target()
+        changelog_user  = None
+        changelog_admin = None
 
     is_critical   = "[CRITICAL]" in title.upper()
     target_label  = TARGET_LABELS.get(target, target)
@@ -471,6 +505,14 @@ def main():
     print(f"  Changelog    :")
     for item in changelog_items:
         print(f"    {GREEN}*{RESET} {item}")
+    if changelog_user:
+        print(f"  Changelog (rol user, apps >= 1.3.0):")
+        for item in changelog_user:
+            print(f"    {GREEN}*{RESET} {item}")
+    if changelog_admin:
+        print(f"  Changelog (rol admin, apps >= 1.3.0):")
+        for item in changelog_admin:
+            print(f"    {GREEN}*{RESET} {item}")
     if description:
         print(f"  Descripcion  : {description[:60]}{'...' if len(description) > 60 else ''}")
     print(f"  APK          : {apk_path.name} ({apk_size_mb:.1f} MB)")
@@ -484,7 +526,13 @@ def main():
     # ── Paso 6: Crear release en GitHub ─────────────────────────────────────
     step("Paso 6 — Publicando")
 
-    release_body = build_release_body(changelog_items, description, target)
+    release_body = build_release_body(
+        changelog_items,
+        description,
+        target,
+        changelog_user=changelog_user,
+        changelog_admin=changelog_admin,
+    )
 
     info("Creando release en GitHub...")
     release_data = github_request(

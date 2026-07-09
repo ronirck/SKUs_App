@@ -37,7 +37,35 @@ class _GuiaCategoriasScreenState extends State<GuiaCategoriasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Guía de Estudio')),
+      appBar: AppBar(
+        // El subtítulo muestra cuántos productos son visibles con los filtros
+        // de sesión activos (búsqueda, marca, solo infaltables).
+        title: StreamBuilder<List<ProductoConEstatus>>(
+          stream: widget.catalogRepository.watchProductosBusqueda(
+            busqueda: _busqueda,
+            marca: _marca,
+            soloInfaltables: _soloInfaltables,
+          ),
+          builder: (context, snapshot) {
+            final count = snapshot.data?.length;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Guía de Estudio'),
+                if (count != null)
+                  Text(
+                    count == 1 ? '1 producto' : '$count productos',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
       body: Column(
         children: [
           Padding(

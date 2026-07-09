@@ -63,8 +63,12 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     }
   }
 
+  // Un admin no puede cambiar el estado de otro admin — solo el suyo propio
+  // ya queda fuera (fetchAllUsers excluye al admin autenticado).
+  bool get _esAdmin => widget.usuario.rol == 'admin';
+
   Future<void> _setEstado(EstadoUsuario estado) async {
-    if (estado == _estado) return;
+    if (_esAdmin || estado == _estado) return;
     setState(() => _savingEstado = true);
     try {
       await widget.adminRepository.setEstado(usuarioId: widget.usuario.usuarioId, estado: estado);
@@ -103,8 +107,20 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                 ButtonSegment(value: EstadoUsuario.rechazado, label: Text('Rechazado')),
               ],
               selected: {_estado},
-              onSelectionChanged: _savingEstado ? null : (s) => _setEstado(s.first),
+              onSelectionChanged:
+                  (_esAdmin || _savingEstado) ? null : (s) => _setEstado(s.first),
             ),
+            if (_esAdmin)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'No se puede cambiar el estado de otro administrador.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ),
             const SizedBox(height: 24),
             const Text('Configuración', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),

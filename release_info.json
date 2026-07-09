@@ -1,12 +1,17 @@
 {
-  "title": "Restricción de infaltables y correcciones de administración v1.2.0",
+  "title": "[CRITICAL] v1.3.0 — Contador de productos en la Guía de Estudio",
   "target": "all",
   "changelog": [
-    "La restricción 'solo infaltables' asignada por un administrador ahora se aplica de verdad: el usuario restringido solo ve productos infaltables en la guía, la búsqueda y los juegos, y ya no tiene el interruptor para desactivarla",
-    "Un administrador ya no se ve a sí mismo en la lista de usuarios (evita quitarse el acceso por accidente)",
-    "Corregido el cierre inesperado al recargar la lista de usuarios (admin)",
-    "Corregido el desborde visual en los filtros de Sede y Antigüedad de la vista Usuarios",
-    "Al guardar la configuración de un usuario se verifica que el cambio realmente se aplicó en la base de datos"
+    "La Guía de Estudio ahora muestra cuántos productos estás viendo, justo debajo del título",
+    "Mejoras de seguridad y control en el panel de administración"
   ],
-  "description": "Actualización con el catálogo de infaltables renovado para FEBECA y SILLACA (nuevas categorías Ferrebazar y Herramientas en SILLACA) y mejoras del panel de administración."
+  "changelog_user": [
+    "La Guía de Estudio ahora muestra cuántos productos estás viendo, justo debajo del título"
+  ],
+  "changelog_admin": [
+    "La Guía de Estudio ahora muestra el total de productos visibles según los filtros",
+    "Ya no es posible cambiar el estado (Pendiente/Aprobado/Rechazado) de otro administrador",
+    "Los mensajes de actualización ahora pueden diferenciarse entre usuarios y administradores"
+  ],
+  "description": "Actualización obligatoria para todos los usuarios. Agrega el contador de productos visibles en la Guía de Estudio (respeta búsqueda, marca y filtro de infaltables), impide que un administrador cambie el estado de otro administrador, y añade soporte de mensajes de actualización diferenciados por rol para futuros releases."
 }

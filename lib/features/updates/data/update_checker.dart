@@ -37,7 +37,7 @@ class UpdateChecker {
     return UpdateInfo(
       isCritical: isCriticalRelease(name),
       latestVersion: latestVersion,
-      changelog: extractChangelog(body),
+      changelog: extractChangelog(body, role: userRole),
       apkUrl: findApkUrl(assets),
       releaseUrl: release['html_url'] as String?,
     );

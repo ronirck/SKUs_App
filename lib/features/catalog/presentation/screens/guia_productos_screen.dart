@@ -23,30 +23,44 @@ class GuiaProductosScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(subcategoriaNombre)),
-      body: StreamBuilder<List<ProductoConEstatus>>(
-        stream: catalogRepository.watchProductos(
-          categoriaCodigo: categoriaCodigo,
-          subcategoriaCodigo: subcategoriaCodigo,
-          marca: marca,
-          soloInfaltables: soloInfaltables,
-        ),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final productos = snapshot.data!;
-          if (productos.isEmpty) {
-            return const Center(child: Text('No hay productos en esta subcategoría.'));
-          }
-          return ListView.separated(
-            itemCount: productos.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) => ProductoTile(item: productos[index]),
-          );
-        },
+    return StreamBuilder<List<ProductoConEstatus>>(
+      stream: catalogRepository.watchProductos(
+        categoriaCodigo: categoriaCodigo,
+        subcategoriaCodigo: subcategoriaCodigo,
+        marca: marca,
+        soloInfaltables: soloInfaltables,
       ),
+      builder: (context, snapshot) {
+        final productos = snapshot.data;
+        return Scaffold(
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(subcategoriaNombre, overflow: TextOverflow.ellipsis),
+                if (productos != null)
+                  Text(
+                    productos.length == 1 ? '1 producto' : '${productos.length} productos',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+              ],
+            ),
+          ),
+          body: productos == null
+              ? const Center(child: CircularProgressIndicator())
+              : productos.isEmpty
+                  ? const Center(child: Text('No hay productos en esta subcategoría.'))
+                  : ListView.separated(
+                      itemCount: productos.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) => ProductoTile(item: productos[index]),
+                    ),
+        );
+      },
     );
   }
 }
