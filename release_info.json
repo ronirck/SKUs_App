@@ -1,8 +1,12 @@
 {
-  "title": "[CRITICAL] Versión 1.1.1 — Nuevo ícono de la app",
+  "title": "Restricción de infaltables y correcciones de administración v1.2.0",
   "target": "all",
   "changelog": [
-    "Nuevo logo e ícono de la aplicación"
+    "La restricción 'solo infaltables' asignada por un administrador ahora se aplica de verdad: el usuario restringido solo ve productos infaltables en la guía, la búsqueda y los juegos, y ya no tiene el interruptor para desactivarla",
+    "Un administrador ya no se ve a sí mismo en la lista de usuarios (evita quitarse el acceso por accidente)",
+    "Corregido el cierre inesperado al recargar la lista de usuarios (admin)",
+    "Corregido el desborde visual en los filtros de Sede y Antigüedad de la vista Usuarios",
+    "Al guardar la configuración de un usuario se verifica que el cambio realmente se aplicó en la base de datos"
   ],
-  "description": "Actualización del ícono de la app con el nuevo diseño de logo."
+  "description": "Actualización con el catálogo de infaltables renovado para FEBECA y SILLACA (nuevas categorías Ferrebazar y Herramientas en SILLACA) y mejoras del panel de administración."
 }

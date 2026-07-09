@@ -1,0 +1,12 @@
+env/
+Data/
+venv/
+.env
+build/
+dist/
+__pycache__/
+CLAUDE.md
+.claude/
+config.py
+updater.py
+./*.sql
