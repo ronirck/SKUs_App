@@ -5,6 +5,7 @@ class UpdateInfo {
     required this.changelog,
     required this.apkUrl,
     required this.releaseUrl,
+    this.apkSizeBytes,
   });
 
   final bool isCritical;
@@ -12,4 +13,8 @@ class UpdateInfo {
   final List<String> changelog;
   final String? apkUrl;
   final String? releaseUrl;
+
+  /// Tamaño publicado del asset .apk — referencia para validar que la
+  /// descarga in-app llegó completa.
+  final int? apkSizeBytes;
 }

@@ -127,6 +127,31 @@ class AdminRepository {
     }
   }
 
+  /// Cambia la sede (casa) que ve el PROPIO admin autenticado. Sube su
+  /// `config_version` para que `ensureSynced` detecte el cambio y
+  /// reconstruya el caché con el catálogo de la casa nueva.
+  Future<void> updateOwnSede(String sede) async {
+    final usuarioId = _client.auth.currentUser?.id;
+    if (usuarioId == null) {
+      throw StateError('No hay sesión activa.');
+    }
+    final current = await _client
+        .from('usuario_config')
+        .select('config_version')
+        .eq('usuario_id', usuarioId)
+        .single();
+    final nextVersion = (current['config_version'] as int) + 1;
+
+    final updated = await _client
+        .from('usuario_config')
+        .update({'sede': sede, 'config_version': nextVersion})
+        .eq('usuario_id', usuarioId)
+        .select();
+    if (updated.isEmpty) {
+      throw StateError('usuario_config no se actualizó (¿política RLS?)');
+    }
+  }
+
   Future<List<String>> fetchMarcas(String sede) async {
     final rows = await _client.from('marcas').select('nombre').eq('sede', sede);
     return rows.map((r) => r['nombre'] as String).toList();

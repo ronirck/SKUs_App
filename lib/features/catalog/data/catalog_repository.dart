@@ -40,6 +40,16 @@ class CatalogRepository {
     return meta?.soloInfaltablesDefault ?? false;
   }
 
+  /// Emite un valor distinto cada vez que el caché se reconstruye (cambio de
+  /// sede/casa, de configuración o de datos). Las pantallas que leen el
+  /// catálogo una sola vez al montarse (p. ej. Desafíos) se remontan con
+  /// esta señal como key para no quedarse con fuentes viejas.
+  Stream<String> watchCacheKey() {
+    return (_db.select(_db.cacheMeta)..where((t) => t.id.equals(1)))
+        .watchSingleOrNull()
+        .map((m) => '${m?.sede}|${m?.configVersion}|${m?.versionDatos}');
+  }
+
   /// Compara versión local vs remota y reconstruye la caché si hace falta.
   /// Deja que las excepciones de red propaguen — quien llama decide si eso
   /// es un error (primera sincronización) o algo a ignorar en silencio

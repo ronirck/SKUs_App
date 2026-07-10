@@ -1,17 +1,22 @@
 {
-  "title": "[CRITICAL] v1.3.0 — Contador de productos en la Guía de Estudio",
+  "title": "[CRITICAL] v1.4.0 — Actualización desde la app, catálogo completo y selector de casa",
   "target": "all",
   "changelog": [
-    "La Guía de Estudio ahora muestra cuántos productos estás viendo, justo debajo del título",
-    "Mejoras de seguridad y control en el panel de administración"
+    "Las actualizaciones ahora se descargan e instalan desde la propia app, con barra de progreso",
+    "El catálogo se descarga completo: se corrigió un error por el que faltaban productos y el contador de infaltables mostraba menos de los reales",
+    "Los resultados de desafíos y el tiempo de uso se suben automáticamente al terminar cada partida"
   ],
   "changelog_user": [
-    "La Guía de Estudio ahora muestra cuántos productos estás viendo, justo debajo del título"
+    "Las actualizaciones ahora se descargan e instalan desde la propia app, con barra de progreso",
+    "El catálogo se descarga completo: ya no faltan productos y el contador de infaltables muestra la cifra real",
+    "Los resultados de desafíos y el tiempo de uso se suben automáticamente al terminar cada partida"
   ],
   "changelog_admin": [
-    "La Guía de Estudio ahora muestra el total de productos visibles según los filtros",
-    "Ya no es posible cambiar el estado (Pendiente/Aprobado/Rechazado) de otro administrador",
-    "Los mensajes de actualización ahora pueden diferenciarse entre usuarios y administradores"
+    "Las actualizaciones ahora se descargan e instalan desde la propia app, con barra de progreso",
+    "El catálogo se descarga completo: ya no faltan productos y el contador de infaltables muestra la cifra real",
+    "Nueva sección 'Casa' en Perfil: puedes ver y cambiar la casa cuyo catálogo estás viendo",
+    "Los resultados de desafíos y el tiempo de uso se suben automáticamente al terminar cada partida",
+    "SILLACA: subcategoría 07-07 renombrada a 'Cubertería' según el catálogo oficial"
   ],
-  "description": "Actualización obligatoria para todos los usuarios. Agrega el contador de productos visibles en la Guía de Estudio (respeta búsqueda, marca y filtro de infaltables), impide que un administrador cambie el estado de otro administrador, y añade soporte de mensajes de actualización diferenciados por rol para futuros releases."
+  "description": "Actualización obligatoria. La app ahora descarga e instala sus actualizaciones internamente (sin copiar enlaces), corrige la descarga incompleta del catálogo en sedes grandes (límite de 1000 filas), agrega el selector de casa para administradores en Perfil, sube resultados y tiempo de uso al finalizar cada desafío, y aplica la reconciliación de nombres de categorías de SILLACA."
 }

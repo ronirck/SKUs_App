@@ -1,6 +1,7 @@
 import '../domain/compare_versions.dart';
 import '../domain/extract_changelog.dart';
 import '../domain/extract_target.dart';
+import '../domain/find_apk_size.dart';
 import '../domain/find_apk_url.dart';
 import '../domain/is_critical_release.dart';
 import '../domain/should_notify_role.dart';
@@ -40,6 +41,7 @@ class UpdateChecker {
       changelog: extractChangelog(body, role: userRole),
       apkUrl: findApkUrl(assets),
       releaseUrl: release['html_url'] as String?,
+      apkSizeBytes: findApkSize(assets),
     );
   }
 }

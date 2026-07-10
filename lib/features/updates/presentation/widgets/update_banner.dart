@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../../data/apk_downloader.dart';
+import '../../data/apk_installer.dart';
 import '../../domain/update_info.dart';
+import 'update_install_section.dart';
 
 class UpdateBanner extends StatelessWidget {
-  const UpdateBanner({super.key, required this.info, required this.onDismiss});
+  const UpdateBanner({
+    super.key,
+    required this.info,
+    required this.onDismiss,
+    required this.downloader,
+    required this.installer,
+  });
 
   final UpdateInfo info;
   final VoidCallback onDismiss;
-
-  Future<void> _copyLink(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: info.apkUrl!));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Enlace copiado.')));
-    }
-  }
+  final ApkDownloader downloader;
+  final ApkInstaller installer;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,7 @@ class UpdateBanner extends StatelessWidget {
       ),
       actions: [
         if (info.apkUrl != null)
-          TextButton(onPressed: () => _copyLink(context), child: const Text('Copiar enlace')),
+          UpdateInstallSection(info: info, downloader: downloader, installer: installer),
         TextButton(onPressed: onDismiss, child: const Text('Ignorar')),
       ],
     );

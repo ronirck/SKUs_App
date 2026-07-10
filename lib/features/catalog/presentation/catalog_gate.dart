@@ -108,6 +108,16 @@ class _CatalogGateState extends State<CatalogGate> with WidgetsBindingObserver {
     _sessionClock.resume();
   }
 
+  /// Al salir del modo desafíos: vuelca el intervalo de sesión en curso a la
+  /// cola local, reanuda el reloj (seguimos en primer plano) y dispara la
+  /// subida best-effort de todo lo encolado. Nunca bloquea al usuario.
+  void _onGameFinished() {
+    unawaited(_flushSessionTime().catchError((_) {}).whenComplete(() {
+      _startSessionTimer();
+      _syncEverything();
+    }));
+  }
+
   Future<void> _flushSessionTime() async {
     final interval = _sessionClock.pause();
     if (interval == null) return;
@@ -212,6 +222,7 @@ class _CatalogGateState extends State<CatalogGate> with WidgetsBindingObserver {
       sessionClock: _sessionClock,
       profile: widget.profile,
       onSignOut: _handleSignOut,
+      onGameFinished: _onGameFinished,
     );
   }
 }

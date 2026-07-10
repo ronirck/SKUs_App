@@ -15,6 +15,8 @@ import '../../game/presentation/screens/desafios_home_screen.dart';
 import '../../profile/presentation/screens/perfil_screen.dart';
 import '../../reportes/data/reportes_repository.dart';
 import '../../session/domain/session_clock.dart';
+import '../../updates/data/apk_downloader.dart';
+import '../../updates/data/apk_installer.dart';
 import '../../updates/data/github_release_data_source.dart';
 import '../../updates/data/update_checker.dart';
 import '../../updates/domain/update_info.dart';
@@ -37,6 +39,7 @@ class HomeShell extends StatefulWidget {
     required this.sessionClock,
     required this.profile,
     required this.onSignOut,
+    this.onGameFinished,
   });
 
   final CatalogRepository catalogRepository;
@@ -49,6 +52,9 @@ class HomeShell extends StatefulWidget {
   final UserProfile profile;
   final Future<void> Function() onSignOut;
 
+  /// Ver [DesafiosHomeScreen.onGameFinished].
+  final VoidCallback? onGameFinished;
+
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -57,6 +63,8 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   final _httpClient = http.Client();
+  late final _apkDownloader = ApkDownloader(_httpClient);
+  final _apkInstaller = ApkInstaller();
   UpdateInfo? _updateInfo;
 
   @override
@@ -83,7 +91,8 @@ class _HomeShellState extends State<HomeShell> {
       );
       if (info == null || !mounted) return;
       if (info.isCritical) {
-        showCriticalUpdateDialog(context, info);
+        showCriticalUpdateDialog(context, info,
+            downloader: _apkDownloader, installer: _apkInstaller);
       } else {
         setState(() => _updateInfo = info);
       }
@@ -96,17 +105,35 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final isAdmin = widget.profile.rol == 'admin';
 
+    return StreamBuilder<String>(
+      stream: widget.catalogRepository.watchCacheKey(),
+      builder: (context, cacheSnapshot) {
+        // Guía y Desafíos leen el catálogo al montarse; la key las remonta
+        // cuando el caché se reconstruye (cambio de casa, config o datos).
+        final cacheKey = cacheSnapshot.data ?? '';
+        return _buildShell(context, isAdmin, cacheKey);
+      },
+    );
+  }
+
+  Widget _buildShell(BuildContext context, bool isAdmin, String cacheKey) {
     final pages = [
-      GuiaCategoriasScreen(catalogRepository: widget.catalogRepository),
+      GuiaCategoriasScreen(
+        key: ValueKey('guia-$cacheKey'),
+        catalogRepository: widget.catalogRepository,
+      ),
       DesafiosHomeScreen(
+        key: ValueKey('desafios-$cacheKey'),
         catalogRepository: widget.catalogRepository,
         pendingGameResultsSyncer: widget.pendingGameResultsSyncer,
         userId: widget.profile.id,
+        onGameFinished: widget.onGameFinished,
       ),
       if (isAdmin) UsuariosScreen(adminRepository: widget.adminRepository),
       PerfilScreen(
         profileRepository: widget.profileRepository,
         catalogRepository: widget.catalogRepository,
+        adminRepository: widget.adminRepository,
         reportesRepository: widget.reportesRepository,
         themeController: widget.themeController,
         sessionClock: widget.sessionClock,
@@ -130,6 +157,8 @@ class _HomeShellState extends State<HomeShell> {
             UpdateBanner(
               info: _updateInfo!,
               onDismiss: () => setState(() => _updateInfo = null),
+              downloader: _apkDownloader,
+              installer: _apkInstaller,
             ),
           Expanded(child: IndexedStack(index: _index, children: pages)),
         ],

@@ -93,6 +93,7 @@ class _GuiaCategoriasScreenState extends State<GuiaCategoriasScreen> {
                       if (marcas.length <= 1) return const SizedBox.shrink();
                       return DropdownButtonFormField<String?>(
                         initialValue: _marca,
+                        isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Marca',
                           isDense: true,

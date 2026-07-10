@@ -30,10 +30,16 @@ class DesafiosHomeScreen extends StatefulWidget {
     required this.userId,
     this.pendingGameResultsSyncer,
     this.recorderOverride,
+    this.onGameFinished,
   });
 
   final CatalogRepository catalogRepository;
   final String userId;
+
+  /// Se invoca al salir del modo desafíos (cuando la ruta del juego se
+  /// cierra): dispara la subida best-effort de resultados encolados y
+  /// tiempo de uso. `null` en la demo de onboarding.
+  final VoidCallback? onGameFinished;
 
   /// Requerido en uso normal (construye el recorder real); innecesario
   /// cuando se da [recorderOverride], como en la demo de onboarding.
@@ -159,16 +165,18 @@ class _DesafiosHomeScreenState extends State<DesafiosHomeScreen> {
   }
 
   void _startGame(String tipoJuego, List<QuizTypeSource> sources, String sede, Duration? timeLimit) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GamePlayScreen(
-        tipoJuego: tipoJuego,
-        sources: sources,
-        dificultad: _dificultad,
-        sede: sede,
-        recorder: widget.recorderOverride ??
-            SupabaseGameResultRecorder(widget.pendingGameResultsSyncer!, widget.userId),
-        timeLimit: timeLimit,
-      ),
-    ));
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => GamePlayScreen(
+            tipoJuego: tipoJuego,
+            sources: sources,
+            dificultad: _dificultad,
+            sede: sede,
+            recorder: widget.recorderOverride ??
+                SupabaseGameResultRecorder(widget.pendingGameResultsSyncer!, widget.userId),
+            timeLimit: timeLimit,
+          ),
+        ))
+        .then((_) => widget.onGameFinished?.call());
   }
 }

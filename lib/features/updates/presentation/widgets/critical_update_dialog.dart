@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../../data/apk_downloader.dart';
+import '../../data/apk_installer.dart';
 import '../../domain/update_info.dart';
+import 'update_install_section.dart';
 
 /// Diálogo bloqueante: sin botón de cierre, `barrierDismissible: false` y
 /// `PopScope(canPop: false)` para que ni el botón atrás de Android lo cierre.
-/// El usuario queda aquí hasta que actualice e instale la nueva versión.
-Future<void> showCriticalUpdateDialog(BuildContext context, UpdateInfo info) {
+/// El usuario queda aquí hasta que descargue e instale la nueva versión
+/// (la descarga y el lanzamiento del instalador ocurren dentro de la app).
+Future<void> showCriticalUpdateDialog(
+  BuildContext context,
+  UpdateInfo info, {
+  required ApkDownloader downloader,
+  required ApkInstaller installer,
+}) {
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -20,7 +28,7 @@ Future<void> showCriticalUpdateDialog(BuildContext context, UpdateInfo info) {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Esta versión ya no es compatible. Descarga la versión '
+                'Esta versión ya no es compatible. Instala la versión '
                 '${info.latestVersion} para continuar.',
               ),
               if (info.changelog.isNotEmpty) ...[
@@ -32,16 +40,7 @@ Future<void> showCriticalUpdateDialog(BuildContext context, UpdateInfo info) {
         ),
         actions: [
           if (info.apkUrl != null)
-            FilledButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: info.apkUrl!));
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext)
-                      .showSnackBar(const SnackBar(content: Text('Enlace copiado.')));
-                }
-              },
-              child: const Text('Copiar enlace'),
-            ),
+            UpdateInstallSection(info: info, downloader: downloader, installer: installer),
         ],
       ),
     ),
