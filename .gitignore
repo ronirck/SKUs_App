@@ -70,3 +70,7 @@ apps/web/.env*.local
 # Formato corporativo de Grupo Mayoreo: material de marca interno
 # (pantonera, logos, guía). No se publica en un repositorio público.
 formato-mayoreo/
+
+# Versión anterior de la app (Flet/Python): se conserva en local solo como
+# referencia de la migración a Flutter. No se versiona.
+_old/
