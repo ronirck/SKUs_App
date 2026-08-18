@@ -30,8 +30,8 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
-/coverage/
+apps/mobile/build/
+apps/mobile/coverage/
 
 # Symbolication related
 app.*.symbols
@@ -40,9 +40,9 @@ app.*.symbols
 app.*.map.json
 
 # Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+apps/mobile/android/app/debug
+apps/mobile/android/app/profile
+apps/mobile/android/app/release
 
 # Variables de entorno inyectadas vía --dart-define-from-file (local, con datos reales)
 env.json
@@ -54,3 +54,15 @@ env.*.json
 
 # Datos de productos y script de carga a Supabase (información interna, no se versiona)
 /Data/
+
+# Next.js (apps/web)
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/.env*.local
+
+# Configuración local de Claude Code: incluye permisos con credenciales reales
+# (tokens en comandos permitidos). Nunca se versiona.
+.claude/settings.local.json
+
+./formato-mayoreo/*
