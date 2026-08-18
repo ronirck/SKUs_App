@@ -101,6 +101,26 @@ from WSL over `/mnt/c/...`, `copyFileSync` fails with `EPERM`, so anything in `p
 family of WSL/DrvFs problem that pushed this app off Next.js. Related: Vite's file watcher gets no
 inotify events on `/mnt/c`, so HMR doesn't pick up edits — restart `npm run dev` to see changes.
 
+## Authentication: Google login, admins only
+
+`src/App.tsx` is the auth gate: no session → `Login.tsx` (email field + "Conectar con Google").
+The typed email is passed to Google as `login_hint` and is **not** an access check — the user can
+pick any account on Google's screen. Authorization happens after the redirect, against
+`perfil_usuario` (the same table the mobile app uses): `rol = 'admin'` and `estado = 'aprobado'`
+(`puedeEntrar` in `src/lib/auth.ts`). An authenticated non-admin is signed out again with an
+explanation rather than left in a half-usable panel.
+
+The Supabase client needs `persistSession: true` and `detectSessionInUrl: true` — the OAuth
+tokens come back in the URL hash and the session must survive the redirect and reloads.
+
+**The login is only the visible door.** What actually protects the data is
+`supabase/auth_admin_rls.sql` (run once in the SQL Editor): it revokes the `anon` grants from
+`anon_rls.sql` and scopes `update (mnemotecnia)` to admins via `es_admin_aprobado()`, a
+`security definer` function — reading `perfil_usuario` from inside another table's policy would
+otherwise re-trigger `perfil_usuario`'s own policies and recurse. Supabase's dashboard also needs
+the Google provider enabled and the app's URLs in the redirect allowlist; neither can be done from
+an agent session here (the MCP is read-only).
+
 ## Database access: RLS is the whole security model here
 
 `supabase/anon_rls.sql` is not optional setup — without it the app loads but every query returns

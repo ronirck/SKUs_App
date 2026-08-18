@@ -8,7 +8,13 @@ import logoMayoreo from "@/assets/logo-mayoreo.png";
  * repo, accedido desde WSL sobre `/mnt/c/...`, `copyFileSync` da EPERM y `vite build`
  * falla al copiar `public/`. Importado, rollup lo emite y el build pasa.
  */
-export default function Encabezado() {
+export default function Encabezado({
+  correo,
+  alSalir,
+}: {
+  correo: string;
+  alSalir: () => void;
+}) {
   return (
     <header className="sticky top-0 z-10 border-b border-marca-borde bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-3 px-6">
@@ -24,6 +30,16 @@ export default function Encabezado() {
         <span className="text-sm font-semibold text-marca-negro">
           Catálogo de productos
         </span>
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="hidden text-sm text-marca-texto sm:inline">{correo}</span>
+          <button
+            className="rounded-[10px] border border-marca-boton-borde bg-white px-3 py-1.5 text-xs font-semibold text-marca-negro hover:bg-marca-boton"
+            onClick={alSalir}
+          >
+            Salir
+          </button>
+        </div>
       </div>
     </header>
   );

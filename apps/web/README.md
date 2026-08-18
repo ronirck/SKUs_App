@@ -39,17 +39,31 @@ explícitas para el rol `anon`, que **no existen por defecto** (las tablas ya ti
 pero hoy solo con políticas para `authenticated`, pensadas para la app móvil).
 
 **Antes de que la app funcione**, hay que ejecutar una vez, en el SQL Editor del dashboard de
-Supabase, el archivo [`supabase/anon_rls.sql`](supabase/anon_rls.sql). Da al rol `anon`:
-lectura de `productos` y `estatus_producto`, y escritura acotada solo a la columna
-`productos.mnemotecnia` (vía `GRANT` de columna — la política RLS de `UPDATE` no puede por sí
-sola restringir columnas).
+Supabase, el archivo [`supabase/auth_admin_rls.sql`](supabase/auth_admin_rls.sql): exige sesión
+para leer el catálogo y deja la escritura acotada a `productos.mnemotecnia` y solo para
+administradores (vía `GRANT` de columna — la política RLS de `UPDATE` no puede por sí sola
+restringir columnas).
 
-**Deliberadamente sin autenticación todavía** — pensado para correr solo en `localhost`. Con las
-políticas de `anon_rls.sql` aplicadas, cualquiera que llegue a la URL desplegada (no solo
-localhost) podría leer el catálogo completo y editar la mnemotecnia de cualquier producto, ya
-que la anon key es pública por diseño. Antes de desplegar en cualquier lugar accesible por red
-hace falta resolver quién puede entrar (ver "Pendiente de decidir" abajo) y probablemente
-reemplazar estas políticas abiertas por unas que exijan un usuario autenticado.
+[`supabase/anon_rls.sql`](supabase/anon_rls.sql) es la versión anterior, que abría el panel al
+rol `anon` sin login. Se conserva solo como referencia y para poder revertir; **no lo ejecutes
+en un entorno accesible por red**, porque deja el catálogo abierto a cualquiera con la URL.
+
+## Acceso: login con Google, solo administradores
+
+El panel abre en una pantalla de acceso: escribes tu correo y entras con **Conectar con
+Google**. El correo solo le indica a Google qué cuenta preseleccionar — **no es el control de
+acceso**. Quien decide es la tabla `perfil_usuario`, la misma que usa la app móvil: entras solo
+si tu perfil tiene `rol = 'admin'` y `estado = 'aprobado'`. Si entras con una cuenta sin
+permiso, se cierra la sesión y se te explica por qué.
+
+**Falta un paso que no está en el código.** Ejecuta una vez, en el SQL Editor de Supabase,
+[`supabase/auth_admin_rls.sql`](supabase/auth_admin_rls.sql): quita el acceso abierto del rol
+`anon` y deja la edición de mnemotecnias solo para administradores. Mientras no lo corras, el
+login es una puerta de la interfaz pero los datos siguen abiertos a cualquiera con la URL.
+
+Además, en el panel de Supabase hay que habilitar el proveedor **Google** (Authentication →
+Providers) y agregar en **URL Configuration** las URLs de retorno: `http://localhost:5173` para
+desarrollo y la de Vercel para producción.
 
 ## Cargar mnemotecnias desde Excel
 
@@ -81,21 +95,20 @@ Además el watcher de Vite no recibe eventos en `/mnt/c`: si editas un archivo, 
 
 ## Arquitectura (MVP actual)
 
-- `src/App.tsx` — el marco corporativo (encabezado con logo, contenido, pie).
+- `src/App.tsx` — la puerta de acceso (sesión + permiso de admin) y el marco corporativo.
+- `src/components/Login.tsx` + `src/lib/auth.ts` — pantalla de acceso con Google y la
+  verificación contra `perfil_usuario`.
 - `src/components/ProductosTable.tsx` — la UI de trabajo: selector de casa, buscador, filtro
   de infaltables, tabla editable. `src/components/EtiquetaEmpresa.tsx` es el patrón canónico
   de punto de color + nombre de la casa.
 - `src/lib/api.ts` — `fetchAllProductos` (pagina automáticamente sobre el límite de 1000 filas
   de Supabase, misma regla que sigue la app móvil), `fetchEstatusProducto`, `updateMnemotecnia`.
 - `src/lib/supabaseClient.ts` — único punto donde se crea el cliente Supabase, con la anon key.
-- `supabase/anon_rls.sql` — la pieza real de seguridad del panel: sin ella la app carga pero
-  toda consulta devuelve vacío/error por RLS.
+- `supabase/auth_admin_rls.sql` — la pieza real de seguridad del panel: sin ella la app carga
+  pero toda consulta devuelve vacío/error por RLS.
 
 ## Pendiente de decidir antes de desplegar en algún entorno compartido
 
-- Autenticación/autorización del panel (¿mismo login de Google + rol `admin` que la app móvil, o
-  algo aparte?) — y, con eso, reemplazar las políticas RLS abiertas de `anon_rls.sql` por unas
-  que exijan sesión.
 - Alcance de edición: hoy solo `mnemotecnia`; definir si se abre a otros campos de `productos`
   (nombre, imagen, estatus).
 - Dónde se despliega (Vercel, u otro).
