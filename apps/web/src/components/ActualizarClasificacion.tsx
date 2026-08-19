@@ -95,10 +95,13 @@ export default function ActualizarClasificacion() {
   const revision = useMemo(() => {
     if (!lectura) return null;
 
-    // Con el interruptor puesto pero sin estatus elegido, cada fila quedaría
-    // marcada como problema. No lo es: solo falta un dato de configuración, y
-    // llenar la pantalla de 249 "errores" confunde en vez de ayudar.
-    const faltaElegir = mismoParaTodos && !estatusUnico;
+    // Dos situaciones en las que ninguna fila tiene destino todavía, y que no
+    // son errores del archivo sino configuración pendiente: hay que decirlo en
+    // una frase, no llenar la pantalla de cientos de "errores" idénticos.
+    const sinColumna = !lectura.traeColumnaEstatus;
+    const faltaElegir =
+      (mismoParaTodos && !estatusUnico) || (sinColumna && !mismoParaTodos);
+    const motivoFalta = sinColumna && !mismoParaTodos ? "sinColumna" : "sinEstatus";
 
     const porCodigo = new Map(productos.map((p) => [codigoDe(p), p]));
     const codigosDelArchivo = new Set<string>();
@@ -188,6 +191,7 @@ export default function ActualizarClasificacion() {
       problemas,
       avisos,
       faltaElegir,
+      motivoFalta,
       filasDelArchivo: lectura.filas.length,
     };
   }, [
@@ -350,9 +354,13 @@ export default function ActualizarClasificacion() {
 
           {revision?.faltaElegir && (
             <p className="rounded-[10px] border border-marca-borde bg-marca-fondo px-4 py-3 text-sm text-marca-texto">
-              Elige arriba la clasificación que llevarán las{" "}
-              {numero(revision.filasDelArchivo)} filas del archivo para ver la
-              revisión.
+              {revision.motivoFalta === "sinColumna"
+                ? `Este archivo no trae columna de clasificación, así que no hay de dónde sacar el estatus de sus ${numero(
+                    revision.filasDelArchivo
+                  )} filas. Marca la casilla de arriba y elige cuál aplicarles a todas.`
+                : `Elige arriba la clasificación que llevarán las ${numero(
+                    revision.filasDelArchivo
+                  )} filas del archivo para ver la revisión.`}
             </p>
           )}
 
