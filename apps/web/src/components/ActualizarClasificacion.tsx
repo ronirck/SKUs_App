@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { updateEstatusEnLote } from "@/lib/api";
 import { useCatalogo } from "@/lib/catalogo";
 import {
@@ -7,16 +7,12 @@ import {
   type ProblemaExcel,
 } from "@/lib/excel";
 import type { Producto } from "@/lib/types";
+import ZonaDeArchivo from "@/components/ZonaDeArchivo";
 import { colorEmpresa, suave } from "@/theme/marca";
 
 const BOTON_PRIMARIO =
   "rounded-[10px] bg-marca-negro px-[22px] py-2.5 text-[.9rem] font-semibold text-white " +
   "hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed";
-
-const BOTON_SECUNDARIO =
-  "rounded-[10px] border border-marca-boton-borde bg-white px-[18px] py-2.5 text-[.9rem] " +
-  "font-semibold text-marca-negro hover:bg-marca-boton disabled:opacity-50 " +
-  "disabled:cursor-not-allowed";
 
 const SELECT =
   "rounded-[10px] border border-marca-borde bg-white px-3 py-2 text-sm font-medium " +
@@ -62,7 +58,6 @@ export default function ActualizarClasificacion() {
   const [estatusUnico, setEstatusUnico] = useState("");
   const [estatusReemplazo, setEstatusReemplazo] = useState("");
   const [fase, setFase] = useState<Fase>({ tipo: "inactivo" });
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const acento = colorEmpresa(sede);
   const codigosInfaltables = useMemo(
@@ -245,50 +240,36 @@ export default function ActualizarClasificacion() {
     });
     setLectura(null);
     setNombreArchivo("");
-    if (inputRef.current) inputRef.current.value = "";
   }
 
   return (
     <div className="flex flex-col gap-5">
       {/* Paso 1: el archivo */}
       <section className="animar-entrada rounded-xl border border-marca-borde bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-marca-negro">
-              1 · Archivo de clasificación
-            </h2>
-            <p className="mt-1 text-sm text-marca-texto">
-              Un Excel con la columna <b>Código</b>. La columna de clasificación
-              (<b>BDF</b> o <b>Estatus</b>) es opcional.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {nombreArchivo && (
-              <span className="text-sm text-marca-texto">{nombreArchivo}</span>
-            )}
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={(e) => {
-                const archivo = e.target.files?.[0];
-                if (archivo) alElegirArchivo(archivo);
-              }}
-            />
-            <button
-              className={BOTON_SECUNDARIO}
-              onClick={() => inputRef.current?.click()}
-              disabled={fase.tipo === "leyendo" || fase.tipo === "aplicando"}
-            >
-              {lectura ? "Cambiar archivo" : "Elegir Excel"}
-            </button>
-          </div>
-        </div>
+        <h2 className="text-sm font-semibold text-marca-negro">
+          1 · Archivo de clasificación
+        </h2>
+        <p className="mt-1 mb-4 text-sm text-marca-texto">
+          Un Excel con la columna <b>Código</b>. La columna de clasificación
+          (<b>BDF</b> o <b>Estatus</b>) es opcional.
+        </p>
 
-        {fase.tipo === "leyendo" && (
-          <p className="mt-3 text-sm text-marca-texto">Leyendo el archivo…</p>
-        )}
+        <ZonaDeArchivo
+          acento={acento}
+          archivo={nombreArchivo || null}
+          detalle={
+            lectura
+              ? `${numero(lectura.filas.length)} filas · ${
+                  lectura.traeColumnaEstatus
+                    ? "trae columna de clasificación"
+                    : "sin columna de clasificación"
+                }`
+              : null
+          }
+          ocupado={fase.tipo === "leyendo"}
+          onArchivo={alElegirArchivo}
+        />
+
         {fase.tipo === "error" && (
           <p className="mt-3 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#b91c1c]">
             {fase.mensaje}
