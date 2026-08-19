@@ -11,15 +11,35 @@ type Estado =
   | { fase: "sinSesion"; aviso: string | null }
   | { fase: "dentro"; perfil: Perfil; correo: string };
 
+/**
+ * Google devuelve los errores en el hash o en la query de la URL. Sin leerlos,
+ * un retorno fallido se ve como "no pasó nada": el usuario vuelve a la
+ * pantalla de acceso sin explicación.
+ */
+function errorDeRetorno(): string | null {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const query = new URLSearchParams(window.location.search);
+  const descripcion =
+    hash.get("error_description") ?? query.get("error_description");
+  const codigo = hash.get("error") ?? query.get("error");
+  if (!descripcion && !codigo) return null;
+
+  // Limpia la URL para que el mensaje no reaparezca al recargar.
+  window.history.replaceState({}, "", window.location.pathname);
+  return descripcion ?? codigo;
+}
+
 export default function App() {
   const [estado, setEstado] = useState<Estado>({ fase: "cargando" });
 
   useEffect(() => {
     let cancelado = false;
 
+    const avisoDeRetorno = errorDeRetorno();
+
     async function revisar(session: Session | null) {
       if (!session) {
-        if (!cancelado) setEstado({ fase: "sinSesion", aviso: null });
+        if (!cancelado) setEstado({ fase: "sinSesion", aviso: avisoDeRetorno });
         return;
       }
 

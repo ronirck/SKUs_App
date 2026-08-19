@@ -1,6 +1,6 @@
 import { useState } from "react";
 import logoMayoreo from "@/assets/logo-mayoreo.png";
-import { entrarConGoogle } from "@/lib/auth";
+import { correoPuedeEntrar, entrarConGoogle } from "@/lib/auth";
 
 const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,6 +19,18 @@ export default function Login({ aviso }: { aviso?: string | null }) {
     setEnviando(true);
     setError(null);
     try {
+      // Se comprueba el permiso antes de salir a Google: si el correo no es
+      // de un administrador, no tiene sentido hacerle dar toda la vuelta para
+      // rebotarlo al volver.
+      const permitido = await correoPuedeEntrar(correo);
+      if (permitido === false) {
+        setError(
+          `${correo.trim()} no es un administrador aprobado, así que no puede entrar al panel. Pide el acceso desde la aplicación.`
+        );
+        setEnviando(false);
+        return;
+      }
+
       await entrarConGoogle(correo);
     } catch (err) {
       setError(`No se pudo abrir el acceso con Google: ${(err as Error).message}`);
@@ -58,7 +70,10 @@ export default function Login({ aviso }: { aviso?: string | null }) {
             className="rounded-[10px] border border-marca-borde bg-white px-3 py-2.5 text-sm text-marca-negro placeholder:text-marca-tenue focus:border-marca-negro focus:outline-none"
             placeholder="tu-correo@mayoreo.biz"
             value={correo}
-            onChange={(e) => setCorreo(e.target.value)}
+            onChange={(e) => {
+              setCorreo(e.target.value);
+              setError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && habilitado) entrar();
             }}
@@ -71,7 +86,7 @@ export default function Login({ aviso }: { aviso?: string | null }) {
           onClick={entrar}
         >
           <LogoGoogle />
-          {enviando ? "Abriendo Google…" : "Conectar con Google"}
+          {enviando ? "Verificando…" : "Conectar con Google"}
         </button>
 
         {error && (

@@ -61,9 +61,26 @@ permiso, se cierra la sesión y se te explica por qué.
 `anon` y deja la edición de mnemotecnias solo para administradores. Mientras no lo corras, el
 login es una puerta de la interfaz pero los datos siguen abiertos a cualquiera con la URL.
 
-Además, en el panel de Supabase hay que habilitar el proveedor **Google** (Authentication →
-Providers) y agregar en **URL Configuration** las URLs de retorno: `http://localhost:5173` para
-desarrollo y la de Vercel para producción.
+Si el correo escrito no es de un administrador, la pantalla lo dice **antes** de salir a Google,
+en vez de dejarte dar toda la vuelta para rebotar al volver. Eso lo hace
+[`supabase/auth_precheck_correo.sql`](supabase/auth_precheck_correo.sql), que también hay que
+ejecutar. Es opcional: sin él la app funciona igual, solo que el rechazo llega después del
+login. Tiene un costo — al ser consultable sin sesión, permite preguntar si un correo concreto
+es administrador (solo sí/no, hay que saber la dirección exacta). Si no aceptas ese riesgo, no
+lo ejecutes.
+
+### Configuración en el panel de Supabase
+
+Dos cosas, en **Authentication**:
+
+1. **Providers → Google**: habilitado, con el Client ID y Secret de un cliente OAuth **web** de
+   Google Cloud (el de la app móvil es Android y no sirve aquí). En Google Cloud, el redirect
+   autorizado debe ser `https://<project-ref>.supabase.co/auth/v1/callback`.
+2. **URL Configuration**: el **Site URL** debe ser la URL de producción, y en **Redirect URLs**
+   hay que listar `http://localhost:5173/**` y la de Vercel. Esto no es opcional: cuando el
+   `redirectTo` que envía la app no está en la lista, **Supabase lo ignora y usa el Site URL**.
+   Si ese valor quedó apuntando a un proyecto viejo, el login termina en una URL muerta
+   (`localhost:3000` y "no se puede acceder a este sitio") sin ningún error visible.
 
 ## Cargar mnemotecnias desde Excel
 

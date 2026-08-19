@@ -110,6 +110,19 @@ pick any account on Google's screen. Authorization happens after the redirect, a
 (`puedeEntrar` in `src/lib/auth.ts`). An authenticated non-admin is signed out again with an
 explanation rather than left in a half-usable panel.
 
+`Login.tsx` also asks `correo_puede_entrar` (RPC, `supabase/auth_precheck_correo.sql`) *before*
+redirecting, so a non-admin address is rejected in place instead of round-tripping through
+Google. The RPC is callable by `anon` — that is email enumeration by design (boolean only, exact
+address required); the file documents the trade-off. When the RPC errors (e.g. the SQL was never
+run) the code **continues to Google on purpose**: the post-login check is the real gate, so
+failing open costs nothing, while failing closed would lock admins out over a config problem.
+
+`App.tsx` reads `error`/`error_description` from the URL hash and query on load. Supabase returns
+OAuth failures that way, and without surfacing them a failed return just looks like "nothing
+happened". Related config trap: when the `redirectTo` the app sends is not in Supabase's redirect
+allowlist, **Supabase silently falls back to the project's Site URL** — a stale Site URL sends
+users to a dead address after login, with no error anywhere.
+
 The Supabase client needs `persistSession: true` and `detectSessionInUrl: true` — the OAuth
 tokens come back in the URL hash and the session must survive the redirect and reloads.
 
