@@ -1,17 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  fetchAllProductos,
-  fetchEstatusProducto,
-  updateMnemotecnia,
-  type Progreso,
-} from "@/lib/api";
-import { SEDES, type Producto } from "@/lib/types";
+import { updateMnemotecnia, type Progreso } from "@/lib/api";
+import type { Producto } from "@/lib/types";
+import { useCatalogo } from "@/lib/catalogo";
 import { colorEmpresa, suave } from "@/theme/marca";
-import EtiquetaEmpresa from "@/components/EtiquetaEmpresa";
 import CargarExcel from "@/components/CargarExcel";
-
-type LoadState = "idle" | "loading" | "error" | "ready";
 
 const BOTON_PRIMARIO =
   "rounded-[10px] bg-marca-negro px-[22px] py-2.5 text-[.9rem] font-semibold text-white " +
@@ -32,22 +25,21 @@ const CAMPO =
   "placeholder:text-marca-tenue focus:border-marca-negro focus:outline-none";
 
 export default function ProductosTable() {
-  const [sede, setSede] = useState<string>(SEDES[0]);
+  // Los datos ya no se piden aquí: los trae el catálogo compartido, que
+  // empezó a descargarlos al abrir la app. Por eso al llegar a esta pestaña
+  // normalmente no hay nada que esperar.
+  const {
+    sede,
+    estado,
+    error: errorMsg,
+    progreso,
+    productos,
+    infaltables: infaltableCodigos,
+    aplicarCambios,
+  } = useCatalogo();
+
   const [query, setQuery] = useState("");
   const [soloInfaltables, setSoloInfaltables] = useState(false);
-
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [infaltableCodigos, setInfaltableCodigos] = useState<Set<string>>(
-    new Set()
-  );
-  // Arranca en "loading", no en "idle": el efecto corre después de la primera
-  // pintura, y con "idle" se veía un instante sin tabla ni barra.
-  const [state, setState] = useState<LoadState>("loading");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [progreso, setProgreso] = useState<Progreso>({
-    cargadas: 0,
-    total: null,
-  });
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -55,42 +47,6 @@ export default function ProductosTable() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const acento = colorEmpresa(sede);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setState("loading");
-      setErrorMsg(null);
-      setProgreso({ cargadas: 0, total: null });
-      try {
-        const [productos, estatus] = await Promise.all([
-          // En desarrollo StrictMode monta el efecto dos veces: sin este guardia
-          // la corrida abortada seguiría empujando su avance a la barra.
-          fetchAllProductos(sede, (p) => {
-            if (!cancelled) setProgreso(p);
-          }),
-          fetchEstatusProducto(),
-        ]);
-        if (cancelled) return;
-        setProductos(productos);
-        setInfaltableCodigos(
-          new Set(estatus.filter((e) => e.es_infaltable).map((e) => e.codigo))
-        );
-        setState("ready");
-      } catch (err) {
-        if (cancelled) return;
-        setErrorMsg((err as Error).message);
-        setState("error");
-      }
-    }
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sede]);
 
   // El filtrado recorre miles de productos: con `useDeferredValue` React deja
   // que la tecla se pinte de inmediato y recalcula la lista después, en vez de
@@ -131,19 +87,6 @@ export default function ProductosTable() {
     contenedorRef.current?.scrollTo({ top: 0 });
   }, [sede, queryDiferida, soloInfaltables]);
 
-  /** Refleja en la tabla lo que la carga masiva ya guardó, sin volver a bajar el catálogo. */
-  function aplicarCambiosLocales(
-    cambios: { id: string; mnemotecnia: string }[]
-  ) {
-    if (cambios.length === 0) return;
-    const porId = new Map(cambios.map((c) => [c.id, c.mnemotecnia]));
-    setProductos((prev) =>
-      prev.map((p) =>
-        porId.has(p.id) ? { ...p, mnemotecnia: porId.get(p.id)! } : p
-      )
-    );
-  }
-
   function startEdit(p: Producto) {
     setEditingId(p.id);
     setDraft(p.mnemotecnia ?? "");
@@ -161,11 +104,7 @@ export default function ProductosTable() {
     setSaveError(null);
     try {
       const producto = await updateMnemotecnia(id, draft);
-      setProductos((prev) =>
-        prev.map((p) =>
-          p.id === id ? { ...p, mnemotecnia: producto.mnemotecnia } : p
-        )
-      );
+      aplicarCambios([{ id, mnemotecnia: producto.mnemotecnia ?? "" }]);
       setEditingId(null);
       setDraft("");
     } catch (err) {
@@ -178,62 +117,13 @@ export default function ProductosTable() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-      <div className="animar-entrada flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[1.6rem] font-bold text-marca-negro">
-            Catálogo de productos
-          </h1>
-          <p className="mt-1 text-sm text-marca-texto">
-            Consulta los códigos de la casa y edita su mnemotecnia.
-          </p>
-        </div>
-        <EtiquetaEmpresa empresa={sede} className="pb-1 font-medium" />
-      </div>
-
+    <div className="flex flex-col gap-6">
       {/* Filtros */}
       <section
         className="animar-entrada rounded-xl border border-marca-borde bg-white p-4"
         style={{ animationDelay: "60ms" }}
       >
         <div className="flex flex-wrap items-end gap-4">
-          <label className="flex flex-col gap-1.5">
-            <span className="versalita">Casa</span>
-            <span
-              className="flex items-center gap-2 rounded-[10px] border border-marca-borde bg-white px-3 py-2 focus-within:border-marca-negro"
-              style={{ borderLeft: `3px solid ${acento}` }}
-            >
-              <span
-                aria-hidden
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: acento }}
-              />
-              <select
-                className="appearance-none bg-transparent pr-1 text-sm font-medium text-marca-negro focus:outline-none"
-                value={sede}
-                onChange={(e) => setSede(e.target.value)}
-              >
-                {SEDES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <svg
-                aria-hidden
-                viewBox="0 0 12 12"
-                className="h-3 w-3 shrink-0 text-marca-texto"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 4.5 6 7.5 9 4.5" />
-              </svg>
-            </span>
-          </label>
-
           <label className="flex min-w-[240px] flex-1 flex-col gap-1.5">
             <span className="versalita">Buscar</span>
             <input
@@ -258,16 +148,16 @@ export default function ProductosTable() {
             sede={sede}
             acento={acento}
             productos={productos}
-            onAplicado={aplicarCambiosLocales}
+            onAplicado={aplicarCambios}
           />
         </div>
       </section>
 
-      {state === "loading" && (
+      {estado === "cargando" && (
         <TablaCargando sede={sede} acento={acento} progreso={progreso} />
       )}
 
-      {state === "error" && (
+      {estado === "error" && (
         <section className="rounded-xl border border-[#fecaca] bg-[#fef2f2] p-5">
           <h2 className="text-sm font-semibold text-[#b91c1c]">
             No se pudo cargar el catálogo
@@ -278,7 +168,7 @@ export default function ProductosTable() {
         </section>
       )}
 
-      {state === "ready" && (
+      {estado === "listo" && (
         <section
           className="animar-entrada flex flex-col gap-3"
           style={{ animationDelay: "120ms" }}

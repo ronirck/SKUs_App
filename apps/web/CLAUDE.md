@@ -35,6 +35,24 @@ var into the client bundle by design. There is no service role key anywhere in t
 
 - `src/App.tsx` — the corporate shell: `Encabezado` (logo + "Grupo Mayoreo" cintillo), the table,
   and a footer.
+- `src/components/CatalogoProvider.tsx` + `src/lib/catalogo.ts` — **the catalog's only owner**.
+  It sits above the tabs so the download starts when the app opens, not when a tab is entered:
+  fetching used to live inside `ProductosTable` and would die with it, so switching tabs would
+  re-download everything. Keeps a per-house cache in a ref, so returning to a house already
+  fetched is instant. Anything that writes must call `aplicarCambios` so the cache and the state
+  stay in sync — otherwise leaving a house and coming back shows stale values.
+- `src/components/Panel.tsx` — tab shell (Clasificación first, Mnemotecnias second) plus the
+  shared house selector (`SelectorCasa.tsx`), which both tabs read from the catalog context.
+- `src/components/ActualizarClasificacion.tsx` — bulk update of `productos.estatus` from an Excel.
+  Only `Código` is required; the classification column is optional (`BDF`, `Estatus`,
+  `Clasificación` are accepted) and when it is missing a toggle applies one status to the whole
+  file — that is the Febeca case, whose sheet has no such column. **The semantics are replacement,
+  not addition**: the file defines the house's complete infaltables set, so every product that is
+  currently infaltable and absent from the file is moved to a replacement status the user picks.
+  Nothing is ever deleted — it is an `update` of one column. The review splits what *receives*
+  classification from what *stops being* infaltable, and warns when a code matches but the
+  description does not. Writes go through `updateEstatusEnLote`, which groups by target status and
+  sends ~100 ids per request: 1,000 products cost a dozen round trips instead of a thousand.
 - `src/components/ProductosTable.tsx` — the working UI: sede selector, name/code search, "solo
   infaltables" filter, and inline mnemotecnia editing. **The list is virtualized**
   (`@tanstack/react-virtual`) and is not a `<table>`: header and rows are separate CSS grids
@@ -125,6 +143,10 @@ users to a dead address after login, with no error anywhere.
 
 The Supabase client needs `persistSession: true` and `detectSessionInUrl: true` — the OAuth
 tokens come back in the URL hash and the session must survive the redirect and reloads.
+
+Writing `productos.estatus` needs `supabase/auth_estatus_admin.sql` on top of the RLS file: the
+column `GRANT` is what limits which columns admins may touch, so a new writable column has to be
+added explicitly.
 
 **The login is only the visible door.** What actually protects the data is
 `supabase/auth_admin_rls.sql` (run once in the SQL Editor): it revokes the `anon` grants from

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Encabezado from "@/components/Encabezado";
 import Login from "@/components/Login";
-import ProductosTable from "@/components/ProductosTable";
+import CatalogoProvider from "@/components/CatalogoProvider";
+import Panel from "@/components/Panel";
 import { supabase } from "@/lib/supabaseClient";
 import { cerrarSesion, obtenerPerfil, puedeEntrar, type Perfil } from "@/lib/auth";
 
@@ -102,10 +103,13 @@ export default function App() {
   }
 
   return (
+    // El proveedor envuelve al panel para que la descarga del catálogo empiece
+    // al entrar, sin esperar a que se abra la pestaña que muestra la tabla.
+    <CatalogoProvider>
     <div className="flex min-h-screen flex-col">
       <Encabezado correo={estado.correo} alSalir={cerrarSesion} />
       <main className="flex-1">
-        <ProductosTable />
+        <Panel />
       </main>
       <footer className="border-t border-marca-borde bg-white">
         <div className="mx-auto w-full max-w-7xl px-6 py-5">
@@ -113,5 +117,6 @@ export default function App() {
         </div>
       </footer>
     </div>
+    </CatalogoProvider>
   );
 }

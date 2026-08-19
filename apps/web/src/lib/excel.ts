@@ -119,3 +119,104 @@ export async function leerMnemotecniasDeExcel(
 
   return { filas, problemas };
 }
+
+// ─── Clasificación (estatus) ────────────────────────────────────────────────
+
+export type FilaClasificacion = {
+  fila: number;
+  codigo: string;
+  /** Vacío cuando el archivo no trae columna de clasificación (caso Febeca). */
+  estatus: string;
+  /** Solo para avisar si no coincide con el nombre en la base; nunca se guarda. */
+  descripcion: string;
+};
+
+export type LecturaClasificacion = {
+  filas: FilaClasificacion[];
+  problemas: ProblemaExcel[];
+  /** Si el archivo trae la columna, se usa; si no, hay que elegir un estatus único. */
+  traeColumnaEstatus: boolean;
+};
+
+/** Encabezados equivalentes: los archivos vienen como vienen. */
+const ALIAS_CODIGO = ["codigo"];
+const ALIAS_ESTATUS = ["estatus", "bdf", "clasificacion", "status", "estado"];
+const ALIAS_DESCRIPCION = [
+  "descripcion",
+  "nombre",
+  "nombre articulo",
+  "nombre del articulo",
+  "producto",
+  "articulo",
+];
+
+function buscarColumna(encabezado: string[], alias: string[]): number {
+  return encabezado.findIndex((h) => alias.includes(h));
+}
+
+/**
+ * Lee un Excel de clasificación. Solo `Código` es obligatorio: la columna de
+ * estatus puede faltar (entonces se aplica uno solo a todo el archivo) y la
+ * descripción es opcional, únicamente para avisar de diferencias con la base.
+ */
+export async function leerClasificacionesDeExcel(
+  archivo: File
+): Promise<LecturaClasificacion> {
+  const { readSheet } = await import("read-excel-file/browser");
+  const hoja = await readSheet(archivo);
+
+  if (hoja.length === 0) throw new Error("El archivo está vacío");
+
+  const encabezado = hoja[0].map((c) => normalizar(comoTexto(c)));
+  const iCodigo = buscarColumna(encabezado, ALIAS_CODIGO);
+  const iEstatus = buscarColumna(encabezado, ALIAS_ESTATUS);
+  const iDescripcion = buscarColumna(encabezado, ALIAS_DESCRIPCION);
+
+  if (iCodigo === -1) {
+    throw new Error(
+      'El Excel debe tener una columna "Código" en la primera fila'
+    );
+  }
+
+  const filas: FilaClasificacion[] = [];
+  const problemas: ProblemaExcel[] = [];
+  const vistos = new Map<string, number>();
+
+  for (let i = 1; i < hoja.length; i++) {
+    const numeroFila = i + 1;
+    const codigo = comoTexto(hoja[i][iCodigo]);
+    const estatus =
+      iEstatus === -1 ? "" : comoTexto(hoja[i][iEstatus]).toUpperCase();
+    const descripcion =
+      iDescripcion === -1 ? "" : comoTexto(hoja[i][iDescripcion]);
+
+    if (!codigo && !estatus && !descripcion) continue;
+
+    if (!FORMATO_CODIGO.test(codigo)) {
+      problemas.push({
+        fila: numeroFila,
+        codigo: codigo || "(vacío)",
+        motivo: "El código no tiene el formato xx-xx-xxx",
+      });
+      continue;
+    }
+
+    const filaPrevia = vistos.get(codigo);
+    if (filaPrevia !== undefined) {
+      problemas.push({
+        fila: numeroFila,
+        codigo,
+        motivo: `Código repetido (ya venía en la fila ${filaPrevia}), se usa el último`,
+      });
+      const indice = filas.findIndex((f) => f.codigo === codigo);
+      filas[indice] = { fila: numeroFila, codigo, estatus, descripcion };
+      vistos.set(codigo, numeroFila);
+      continue;
+    }
+
+    vistos.set(codigo, numeroFila);
+    filas.push({ fila: numeroFila, codigo, estatus, descripcion });
+  }
+
+  return { filas, problemas, traeColumnaEstatus: iEstatus !== -1 };
+}

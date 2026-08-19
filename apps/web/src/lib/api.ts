@@ -168,3 +168,74 @@ export async function updateMnemotecnia(
 
   return data[0] as { id: string; mnemotecnia: string | null };
 }
+
+/**
+ * Cambia el estatus de muchos productos.
+ *
+ * A diferencia de las mnemotecnias —cada una con un texto distinto, así que
+ * toca fila por fila— aquí muchos productos comparten destino. Se agrupan por
+ * estatus y se mandan por tandas de ids en una sola petición: actualizar 1.000
+ * productos pasa de 1.000 viajes a una decena. Cada viaje cuesta ~1,2 s casi
+ * todo en latencia, así que la diferencia es de minutos a segundos.
+ */
+export async function updateEstatusEnLote(
+  cambios: { id: string; codigo: string; estatus: string }[],
+  onProgress?: (hechas: number, total: number) => void
+): Promise<ResultadoLote> {
+  const POR_PETICION = 100;
+  const fallidas: ResultadoLote["fallidas"] = [];
+  let aplicadas = 0;
+  let hechas = 0;
+
+  const porEstatus = new Map<string, typeof cambios>();
+  for (const c of cambios) {
+    const grupo = porEstatus.get(c.estatus) ?? [];
+    grupo.push(c);
+    porEstatus.set(c.estatus, grupo);
+  }
+
+  for (const [estatus, grupo] of porEstatus) {
+    for (let i = 0; i < grupo.length; i += POR_PETICION) {
+      const tanda = grupo.slice(i, i + POR_PETICION);
+      const ids = tanda.map((c) => c.id);
+
+      try {
+        const { data, error } = await supabase
+          .from("productos")
+          .update({ estatus })
+          .in("id", ids)
+          .select("id");
+
+        if (error) throw error;
+
+        // Verificar cuántas filas volvieron: con RLS, un UPDATE sin permiso no
+        // da error, simplemente no afecta nada. Sin este control se reportaría
+        // como guardado algo que nunca se escribió.
+        const guardados = new Set((data ?? []).map((f) => f.id as string));
+        aplicadas += guardados.size;
+        for (const c of tanda) {
+          if (!guardados.has(c.id)) {
+            fallidas.push({
+              id: c.id,
+              codigo: c.codigo,
+              motivo: "La base no confirmó el cambio (¿permisos?)",
+            });
+          }
+        }
+      } catch (err) {
+        for (const c of tanda) {
+          fallidas.push({
+            id: c.id,
+            codigo: c.codigo,
+            motivo: (err as Error).message,
+          });
+        }
+      } finally {
+        hechas += tanda.length;
+        onProgress?.(hechas, cambios.length);
+      }
+    }
+  }
+
+  return { aplicadas, fallidas };
+}
