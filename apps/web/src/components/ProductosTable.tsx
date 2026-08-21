@@ -24,6 +24,28 @@ const CAMPO =
   "rounded-[10px] border border-marca-borde bg-white px-3 py-2 text-sm text-marca-negro " +
   "placeholder:text-marca-tenue focus:border-marca-negro focus:outline-none";
 
+const SELECT_CAMPO =
+  "rounded-[10px] border border-marca-borde bg-white px-3 py-2 text-sm font-medium " +
+  "text-marca-negro focus:border-marca-negro focus:outline-none";
+
+type ColumnaOrdenable = "codigo" | "nombre" | "marca" | "estatus" | "mnemotecnia";
+type Direccion = "asc" | "desc";
+
+function valorColumna(p: Producto, columna: ColumnaOrdenable): string {
+  switch (columna) {
+    case "codigo":
+      return p.codigo_completo ?? p.codigo;
+    case "nombre":
+      return p.nombre;
+    case "marca":
+      return p.marca ?? "";
+    case "estatus":
+      return p.estatus;
+    case "mnemotecnia":
+      return p.mnemotecnia ?? "";
+  }
+}
+
 export default function ProductosTable() {
   // Los datos ya no se piden aquí: los trae el catálogo compartido, que
   // empezó a descargarlos al abrir la app. Por eso al llegar a esta pestaña
@@ -34,12 +56,19 @@ export default function ProductosTable() {
     error: errorMsg,
     progreso,
     productos,
+    estatus,
     infaltables: infaltableCodigos,
     aplicarCambios,
   } = useCatalogo();
 
   const [query, setQuery] = useState("");
   const [soloInfaltables, setSoloInfaltables] = useState(false);
+  const [filtroMarca, setFiltroMarca] = useState("");
+  const [filtroEstatus, setFiltroEstatus] = useState("");
+
+  // Por defecto, ascendente por código.
+  const [columnaOrden, setColumnaOrden] = useState<ColumnaOrdenable>("codigo");
+  const [direccionOrden, setDireccionOrden] = useState<Direccion>("asc");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -53,10 +82,22 @@ export default function ProductosTable() {
   // bloquear el campo en cada pulsación.
   const queryDiferida = useDeferredValue(query);
 
+  const marcasDisponibles = useMemo(() => {
+    const set = new Set(productos.map((p) => p.marca).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }, [productos]);
+
+  const estatusDisponibles = useMemo(
+    () => estatus.map((e) => e.codigo).sort((a, b) => a.localeCompare(b, "es")),
+    [estatus]
+  );
+
   const filtered = useMemo(() => {
     const q = queryDiferida.trim().toLowerCase();
     return productos.filter((p) => {
       if (soloInfaltables && !infaltableCodigos.has(p.estatus)) return false;
+      if (filtroMarca && p.marca !== filtroMarca) return false;
+      if (filtroEstatus && p.estatus !== filtroEstatus) return false;
       if (!q) return true;
       return (
         p.nombre.toLowerCase().includes(q) ||
@@ -64,7 +105,36 @@ export default function ProductosTable() {
         p.codigo.toLowerCase().includes(q)
       );
     });
-  }, [productos, queryDiferida, soloInfaltables, infaltableCodigos]);
+  }, [
+    productos,
+    queryDiferida,
+    soloInfaltables,
+    infaltableCodigos,
+    filtroMarca,
+    filtroEstatus,
+  ]);
+
+  const ordenados = useMemo(() => {
+    const signo = direccionOrden === "asc" ? 1 : -1;
+    return [...filtered].sort(
+      (a, b) =>
+        signo *
+        valorColumna(a, columnaOrden).localeCompare(
+          valorColumna(b, columnaOrden),
+          "es",
+          { numeric: true, sensitivity: "base" }
+        )
+    );
+  }, [filtered, columnaOrden, direccionOrden]);
+
+  function ordenarPor(columna: ColumnaOrdenable) {
+    if (columna === columnaOrden) {
+      setDireccionOrden((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setColumnaOrden(columna);
+      setDireccionOrden("asc");
+    }
+  }
 
   // Virtualización: se renderizan solo las filas visibles. Con el catálogo
   // completo en el DOM eran ~6.200 filas y 37.000 celdas (5 MB), y cada
@@ -72,20 +142,28 @@ export default function ProductosTable() {
   // de ahí el congelamiento y el "Chrome no responde".
   const contenedorRef = useRef<HTMLDivElement>(null);
   const virtualizador = useVirtualizer({
-    count: filtered.length,
+    count: ordenados.length,
     getScrollElement: () => contenedorRef.current,
     // Alto estimado; el real se mide por fila, porque los nombres largos
     // ocupan dos líneas y la fila en edición crece con el textarea.
     estimateSize: () => 57,
     overscan: 8,
-    getItemKey: (i) => filtered[i]?.id ?? i,
+    getItemKey: (i) => ordenados[i]?.id ?? i,
   });
 
-  // Al cambiar de casa o de filtro la lista es otra: si no se vuelve arriba,
-  // el scroll queda apuntando a una posición que ya no existe.
+  // Al cambiar de casa, de filtro o de orden la lista es otra: si no se
+  // vuelve arriba, el scroll queda apuntando a una posición que ya no existe.
   useEffect(() => {
     contenedorRef.current?.scrollTo({ top: 0 });
-  }, [sede, queryDiferida, soloInfaltables]);
+  }, [
+    sede,
+    queryDiferida,
+    soloInfaltables,
+    filtroMarca,
+    filtroEstatus,
+    columnaOrden,
+    direccionOrden,
+  ]);
 
   function startEdit(p: Producto) {
     setEditingId(p.id);
@@ -144,6 +222,38 @@ export default function ProductosTable() {
             Solo infaltables
           </label>
 
+          <label className="flex flex-col gap-1.5">
+            <span className="versalita">Marca</span>
+            <select
+              className={SELECT_CAMPO}
+              value={filtroMarca}
+              onChange={(e) => setFiltroMarca(e.target.value)}
+            >
+              <option value="">Todas</option>
+              {marcasDisponibles.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="versalita">Clasificación</span>
+            <select
+              className={SELECT_CAMPO}
+              value={filtroEstatus}
+              onChange={(e) => setFiltroEstatus(e.target.value)}
+            >
+              <option value="">Todas</option>
+              {estatusDisponibles.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <CargarExcel
             sede={sede}
             acento={acento}
@@ -175,7 +285,7 @@ export default function ProductosTable() {
         >
           <p className="text-sm text-marca-texto">
             <span className="font-semibold text-marca-negro">
-              {filtered.length}
+              {ordenados.length}
             </span>{" "}
             de {productos.length} productos
           </p>
@@ -186,7 +296,7 @@ export default function ProductosTable() {
             </p>
           )}
 
-          {filtered.length === 0 ? (
+          {ordenados.length === 0 ? (
             <div className="rounded-xl border border-marca-borde bg-white px-6 py-14 text-center">
               <p className="text-sm font-semibold text-marca-negro">
                 Ningún producto coincide con la búsqueda
@@ -199,7 +309,7 @@ export default function ProductosTable() {
             <div
               ref={contenedorRef}
               role="table"
-              aria-rowcount={filtered.length}
+              aria-rowcount={ordenados.length}
               className="h-[70vh] overflow-auto rounded-xl border border-marca-borde bg-white"
             >
               <div className="min-w-[1100px] text-sm">
@@ -208,21 +318,41 @@ export default function ProductosTable() {
                   className="sticky top-0 z-10 grid border-b border-marca-borde bg-marca-fondo"
                   style={{ gridTemplateColumns: COLUMNAS_GRID }}
                 >
-                  <div role="columnheader" className="versalita px-4 py-3">
-                    Código
-                  </div>
-                  <div role="columnheader" className="versalita px-4 py-3">
-                    Nombre
-                  </div>
-                  <div role="columnheader" className="versalita px-4 py-3">
-                    Marca
-                  </div>
-                  <div role="columnheader" className="versalita px-4 py-3">
-                    Estatus
-                  </div>
-                  <div role="columnheader" className="versalita px-4 py-3">
-                    Mnemotecnia
-                  </div>
+                  <EncabezadoOrdenable
+                    columna="codigo"
+                    etiqueta="Código"
+                    activa={columnaOrden}
+                    direccion={direccionOrden}
+                    onClick={ordenarPor}
+                  />
+                  <EncabezadoOrdenable
+                    columna="nombre"
+                    etiqueta="Nombre"
+                    activa={columnaOrden}
+                    direccion={direccionOrden}
+                    onClick={ordenarPor}
+                  />
+                  <EncabezadoOrdenable
+                    columna="marca"
+                    etiqueta="Marca"
+                    activa={columnaOrden}
+                    direccion={direccionOrden}
+                    onClick={ordenarPor}
+                  />
+                  <EncabezadoOrdenable
+                    columna="estatus"
+                    etiqueta="Estatus"
+                    activa={columnaOrden}
+                    direccion={direccionOrden}
+                    onClick={ordenarPor}
+                  />
+                  <EncabezadoOrdenable
+                    columna="mnemotecnia"
+                    etiqueta="Mnemotecnia"
+                    activa={columnaOrden}
+                    direccion={direccionOrden}
+                    onClick={ordenarPor}
+                  />
                   <div role="columnheader" className="px-4 py-3">
                     <span className="sr-only">Acciones</span>
                   </div>
@@ -233,7 +363,7 @@ export default function ProductosTable() {
                   style={{ height: virtualizador.getTotalSize() }}
                 >
                   {virtualizador.getVirtualItems().map((virtual) => {
-                    const p = filtered[virtual.index];
+                    const p = ordenados[virtual.index];
                     const isEditing = editingId === p.id;
                     const isInfaltable = infaltableCodigos.has(p.estatus);
                     return (
@@ -333,6 +463,36 @@ export default function ProductosTable() {
 }
 
 const numero = (n: number) => n.toLocaleString("es-VE");
+
+function EncabezadoOrdenable({
+  columna,
+  etiqueta,
+  activa,
+  direccion,
+  onClick,
+}: {
+  columna: ColumnaOrdenable;
+  etiqueta: string;
+  activa: ColumnaOrdenable;
+  direccion: Direccion;
+  onClick: (columna: ColumnaOrdenable) => void;
+}) {
+  const esActiva = columna === activa;
+  return (
+    <button
+      type="button"
+      role="columnheader"
+      aria-sort={esActiva ? (direccion === "asc" ? "ascending" : "descending") : "none"}
+      className="versalita flex cursor-pointer items-center gap-1 px-4 py-3 text-left hover:text-marca-negro"
+      onClick={() => onClick(columna)}
+    >
+      {etiqueta}
+      <span aria-hidden className={esActiva ? "text-marca-negro" : "text-marca-tenue"}>
+        {esActiva ? (direccion === "asc" ? "▲" : "▼") : "▲"}
+      </span>
+    </button>
+  );
+}
 
 function TablaCargando({
   sede,
