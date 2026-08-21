@@ -26,3 +26,16 @@ export type EstatusProducto = {
   codigo: string;
   es_infaltable: boolean;
 };
+
+export type Categoria = {
+  codigo: string;
+  nombre: string;
+  sede: string;
+};
+
+export type Subcategoria = {
+  codigo: string;
+  categoria_codigo: string;
+  nombre: string;
+  sede: string;
+};

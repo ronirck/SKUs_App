@@ -127,8 +127,11 @@ export type FilaClasificacion = {
   codigo: string;
   /** Vacío cuando el archivo no trae columna de clasificación (caso Febeca). */
   estatus: string;
-  /** Solo para avisar si no coincide con el nombre en la base; nunca se guarda. */
+  /** Estos tres solo se usan para avisar de diferencias con la base; nunca se
+   * guardan directo — es la revisión la que decide si se aplican. */
   descripcion: string;
+  categoria: string;
+  subcategoria: string;
 };
 
 export type LecturaClasificacion = {
@@ -136,6 +139,8 @@ export type LecturaClasificacion = {
   problemas: ProblemaExcel[];
   /** Si el archivo trae la columna, se usa; si no, hay que elegir un estatus único. */
   traeColumnaEstatus: boolean;
+  traeColumnaCategoria: boolean;
+  traeColumnaSubcategoria: boolean;
 };
 
 /** Encabezados equivalentes: los archivos vienen como vienen. */
@@ -149,6 +154,8 @@ const ALIAS_DESCRIPCION = [
   "producto",
   "articulo",
 ];
+const ALIAS_CATEGORIA = ["categoria"];
+const ALIAS_SUBCATEGORIA = ["sub-categoria", "subcategoria", "sub categoria"];
 
 function buscarColumna(encabezado: string[], alias: string[]): number {
   return encabezado.findIndex((h) => alias.includes(h));
@@ -171,6 +178,8 @@ export async function leerClasificacionesDeExcel(
   const iCodigo = buscarColumna(encabezado, ALIAS_CODIGO);
   const iEstatus = buscarColumna(encabezado, ALIAS_ESTATUS);
   const iDescripcion = buscarColumna(encabezado, ALIAS_DESCRIPCION);
+  const iCategoria = buscarColumna(encabezado, ALIAS_CATEGORIA);
+  const iSubcategoria = buscarColumna(encabezado, ALIAS_SUBCATEGORIA);
 
   if (iCodigo === -1) {
     throw new Error(
@@ -189,8 +198,13 @@ export async function leerClasificacionesDeExcel(
       iEstatus === -1 ? "" : comoTexto(hoja[i][iEstatus]).toUpperCase();
     const descripcion =
       iDescripcion === -1 ? "" : comoTexto(hoja[i][iDescripcion]);
+    const categoria =
+      iCategoria === -1 ? "" : comoTexto(hoja[i][iCategoria]);
+    const subcategoria =
+      iSubcategoria === -1 ? "" : comoTexto(hoja[i][iSubcategoria]);
 
-    if (!codigo && !estatus && !descripcion) continue;
+    if (!codigo && !estatus && !descripcion && !categoria && !subcategoria)
+      continue;
 
     if (!FORMATO_CODIGO.test(codigo)) {
       problemas.push({
@@ -201,6 +215,15 @@ export async function leerClasificacionesDeExcel(
       continue;
     }
 
+    const fila: FilaClasificacion = {
+      fila: numeroFila,
+      codigo,
+      estatus,
+      descripcion,
+      categoria,
+      subcategoria,
+    };
+
     const filaPrevia = vistos.get(codigo);
     if (filaPrevia !== undefined) {
       problemas.push({
@@ -209,14 +232,20 @@ export async function leerClasificacionesDeExcel(
         motivo: `Código repetido (ya venía en la fila ${filaPrevia}), se usa el último`,
       });
       const indice = filas.findIndex((f) => f.codigo === codigo);
-      filas[indice] = { fila: numeroFila, codigo, estatus, descripcion };
+      filas[indice] = fila;
       vistos.set(codigo, numeroFila);
       continue;
     }
 
     vistos.set(codigo, numeroFila);
-    filas.push({ fila: numeroFila, codigo, estatus, descripcion });
+    filas.push(fila);
   }
 
-  return { filas, problemas, traeColumnaEstatus: iEstatus !== -1 };
+  return {
+    filas,
+    problemas,
+    traeColumnaEstatus: iEstatus !== -1,
+    traeColumnaCategoria: iCategoria !== -1,
+    traeColumnaSubcategoria: iSubcategoria !== -1,
+  };
 }

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import type { EstatusProducto, Producto } from "@/lib/types";
+import type { Categoria, EstatusProducto, Producto, Subcategoria } from "@/lib/types";
 
 // Supabase trunca a 1000 filas por consulta sin avisar — hay que paginar
 // siempre en tablas de catálogo (misma regla que sigue la app móvil).
@@ -99,6 +99,26 @@ export async function fetchEstatusProducto(): Promise<EstatusProducto[]> {
 
   if (error) throw error;
   return data as EstatusProducto[];
+}
+
+export async function fetchCategorias(sede: string): Promise<Categoria[]> {
+  const { data, error } = await supabase
+    .from("categorias")
+    .select("codigo, nombre, sede")
+    .eq("sede", sede);
+
+  if (error) throw error;
+  return data as Categoria[];
+}
+
+export async function fetchSubcategorias(sede: string): Promise<Subcategoria[]> {
+  const { data, error } = await supabase
+    .from("subcategorias")
+    .select("codigo, categoria_codigo, nombre, sede")
+    .eq("sede", sede);
+
+  if (error) throw error;
+  return data as Subcategoria[];
 }
 
 export type ResultadoLote = {
@@ -235,6 +255,61 @@ export async function updateEstatusEnLote(
         onProgress?.(hechas, cambios.length);
       }
     }
+  }
+
+  return { aplicadas, fallidas };
+}
+
+export type CamposProducto = Partial<{
+  nombre: string;
+  categoria_codigo: string;
+  subcategoria_codigo: string;
+}>;
+
+/**
+ * Sobrescribe campos puntuales (nombre, categoría, subcategoría) cuando el
+ * usuario elige explícitamente el valor del Excel sobre el de la base, al
+ * revisar una carga de clasificación. A diferencia de `updateEstatusEnLote`,
+ * cada fila trae campos distintos, así que va una por una en tandas cortas
+ * (mismo patrón que `updateMnemotecniasEnLote`) en vez de agrupar por valor.
+ */
+export async function updateProductoCamposEnLote(
+  items: { id: string; codigo: string; campos: CamposProducto }[],
+  onProgress?: (hechas: number, total: number) => void
+): Promise<ResultadoLote> {
+  const TANDA = 5;
+  const fallidas: ResultadoLote["fallidas"] = [];
+  let aplicadas = 0;
+  let hechas = 0;
+
+  for (let i = 0; i < items.length; i += TANDA) {
+    const tanda = items.slice(i, i + TANDA);
+    await Promise.all(
+      tanda.map(async (item) => {
+        try {
+          const { data, error } = await supabase
+            .from("productos")
+            .update(item.campos)
+            .eq("id", item.id)
+            .select("id");
+
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            throw new Error("La base no confirmó el cambio (¿permisos?)");
+          }
+          aplicadas++;
+        } catch (err) {
+          fallidas.push({
+            id: item.id,
+            codigo: item.codigo,
+            motivo: (err as Error).message,
+          });
+        } finally {
+          hechas++;
+          onProgress?.(hechas, items.length);
+        }
+      })
+    );
   }
 
   return { aplicadas, fallidas };

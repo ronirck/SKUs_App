@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchAllProductos, fetchEstatusProducto, type Progreso } from "@/lib/api";
+import {
+  fetchAllProductos,
+  fetchCategorias,
+  fetchEstatusProducto,
+  fetchSubcategorias,
+  type Progreso,
+} from "@/lib/api";
 import { ContextoCatalogo, type EstadoCatalogo } from "@/lib/catalogo";
-import { SEDES, type EstatusProducto, type Producto } from "@/lib/types";
+import {
+  SEDES,
+  type Categoria,
+  type EstatusProducto,
+  type Producto,
+  type Subcategoria,
+} from "@/lib/types";
 
 /**
  * Dueño único del catálogo, montado por encima de las pestañas.
@@ -27,10 +39,14 @@ export default function CatalogoProvider({
   });
   const [productos, setProductos] = useState<Producto[]>([]);
   const [estatus, setEstatus] = useState<EstatusProducto[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [subcategorias, setSubcategorias] = useState<Subcategoria[]>([]);
 
   // El caché vive en un ref: cambia sin provocar renders y sobrevive a los
   // cambios de pestaña, que es justo lo que se busca.
   const cache = useRef(new Map<string, Producto[]>());
+  const cacheCategorias = useRef(new Map<string, Categoria[]>());
+  const cacheSubcategorias = useRef(new Map<string, Subcategoria[]>());
   const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
@@ -42,6 +58,8 @@ export default function CatalogoProvider({
       const enCache = cache.current.get(sede);
       if (enCache) {
         setProductos(enCache);
+        setCategorias(cacheCategorias.current.get(sede) ?? []);
+        setSubcategorias(cacheSubcategorias.current.get(sede) ?? []);
         setProgreso({ cargadas: enCache.length, total: enCache.length });
         setEstado("listo");
         return;
@@ -52,17 +70,24 @@ export default function CatalogoProvider({
       setProductos([]);
 
       try {
-        const [filas, estatusFilas] = await Promise.all([
-          fetchAllProductos(sede, (p) => {
-            if (!cancelado) setProgreso(p);
-          }),
-          fetchEstatusProducto(),
-        ]);
+        const [filas, estatusFilas, categoriasFilas, subcategoriasFilas] =
+          await Promise.all([
+            fetchAllProductos(sede, (p) => {
+              if (!cancelado) setProgreso(p);
+            }),
+            fetchEstatusProducto(),
+            fetchCategorias(sede),
+            fetchSubcategorias(sede),
+          ]);
         if (cancelado) return;
 
         cache.current.set(sede, filas);
+        cacheCategorias.current.set(sede, categoriasFilas);
+        cacheSubcategorias.current.set(sede, subcategoriasFilas);
         setProductos(filas);
         setEstatus(estatusFilas);
+        setCategorias(categoriasFilas);
+        setSubcategorias(subcategoriasFilas);
         setEstado("listo");
       } catch (err) {
         if (cancelado) return;
@@ -78,7 +103,16 @@ export default function CatalogoProvider({
   }, [sede, recarga]);
 
   const aplicarCambios = useCallback(
-    (cambios: { id: string; mnemotecnia?: string; estatus?: string }[]) => {
+    (
+      cambios: {
+        id: string;
+        mnemotecnia?: string;
+        estatus?: string;
+        nombre?: string;
+        categoria_codigo?: string;
+        subcategoria_codigo?: string;
+      }[]
+    ) => {
       if (cambios.length === 0) return;
       const porId = new Map(cambios.map((c) => [c.id, c]));
 
@@ -92,6 +126,13 @@ export default function CatalogoProvider({
               ? { mnemotecnia: cambio.mnemotecnia }
               : {}),
             ...(cambio.estatus !== undefined ? { estatus: cambio.estatus } : {}),
+            ...(cambio.nombre !== undefined ? { nombre: cambio.nombre } : {}),
+            ...(cambio.categoria_codigo !== undefined
+              ? { categoria_codigo: cambio.categoria_codigo }
+              : {}),
+            ...(cambio.subcategoria_codigo !== undefined
+              ? { subcategoria_codigo: cambio.subcategoria_codigo }
+              : {}),
           };
         });
         // El caché tiene que quedar igual que el estado: si no, cambiar de casa
@@ -105,6 +146,8 @@ export default function CatalogoProvider({
 
   const recargar = useCallback(() => {
     cache.current.delete(sede);
+    cacheCategorias.current.delete(sede);
+    cacheSubcategorias.current.delete(sede);
     setRecarga((n) => n + 1);
   }, [sede]);
 
@@ -122,6 +165,8 @@ export default function CatalogoProvider({
       progreso,
       productos,
       estatus,
+      categorias,
+      subcategorias,
       infaltables,
       aplicarCambios,
       recargar,
@@ -133,6 +178,8 @@ export default function CatalogoProvider({
       progreso,
       productos,
       estatus,
+      categorias,
+      subcategorias,
       infaltables,
       aplicarCambios,
       recargar,
