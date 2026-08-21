@@ -42,8 +42,19 @@ export default function ZonaDeArchivo({
     };
   }, []);
 
-  function recibir(archivo: File | undefined) {
-    if (!archivo) return;
+  // Sin `multiple` en el input, el diálogo nativo ya limita a un archivo —
+  // pero arrastrar y soltar no pasa por ese input, así que igual pueden caer
+  // varios de una vez. Ahí se rechazan en vez de analizar el primero en
+  // silencio, que dejaría creer que se revisaron todos.
+  function recibir(archivos: FileList | null | undefined) {
+    if (!archivos || archivos.length === 0) return;
+    if (archivos.length > 1) {
+      setError(
+        `Soltaste ${archivos.length} archivos. Solo se puede analizar uno a la vez — suelta o elige uno solo.`
+      );
+      return;
+    }
+    const archivo = archivos[0];
     const nombre = archivo.name.toLowerCase();
     if (!EXTENSIONES.some((e) => nombre.endsWith(e))) {
       setError(`"${archivo.name}" no es un Excel. Usa un archivo .xlsx o .xls.`);
@@ -61,7 +72,7 @@ export default function ZonaDeArchivo({
         accept={EXTENSIONES.join(",")}
         className="hidden"
         onChange={(e) => {
-          recibir(e.target.files?.[0]);
+          recibir(e.target.files);
           e.target.value = "";
         }}
       />
@@ -102,7 +113,7 @@ export default function ZonaDeArchivo({
           e.preventDefault();
           profundidad.current = 0;
           setEncima(false);
-          if (!ocupado) recibir(e.dataTransfer.files?.[0]);
+          if (!ocupado) recibir(e.dataTransfer.files);
         }}
       >
         <IconoHoja acento={encima ? acento : "#9a9a9a"} />
